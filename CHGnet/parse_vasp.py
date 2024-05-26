@@ -15,6 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 from sklearn.model_selection import train_test_split
+from ase.calculators.calculator import PropertyNotImplementedError
 
 
 def parse_args():
@@ -97,9 +98,17 @@ def filter_atoms_list(atoms_list):
     filtered_atoms_list = []
     
     for atoms in atoms_list:
-        if atoms.get_stress() is not None and atoms.get_forces().any() and atoms.get_total_energy() < 0:
+        try:
+            # Check if stress is available
+            stress = atoms.get_stress()
+        except PropertyNotImplementedError:
+            # If stress is not available, skip this atoms object
+            continue
+        
+        # Check if forces are available and not empty, and if the total energy is less than 0
+        if atoms.get_forces().any() and atoms.get_total_energy() < 0:
             filtered_atoms_list.append(atoms)
-    
+            
     return filtered_atoms_list
 
 def create_property_lists(atoms_list):
