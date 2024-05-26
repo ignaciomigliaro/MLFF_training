@@ -1,11 +1,8 @@
 from ase import Atoms
 from ase.io import read,write
 import os
-import subprocess
 from tqdm import tqdm
 import numpy as np
-import os
-import torch
 import os
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +14,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
-
+from sklearn.model_selection import train_test_split
 
 
 def parse_args():
@@ -47,10 +44,22 @@ def parse_args():
         "output",
         help="If you want to only parse relaxed energy and have structures predict relaxed energies"
     )
+    parser.add_argument(
+         '--mace',
+         action='store_true',
+         help="If you want to parse for MACE and create an XYZ file instead of a pickle file"
+    )
+    parser.add_argument(
+         '--verbose',
+         action='store_true',
+         help="If you want to see any error occurring in the parsing process"
+
+    )
     return parser.parse_args()
 
-def parse_vasp_dir(filepath):
+def parse_vasp_dir(filepath,verbose):
     """This is a function to replace the Chgnet Utils, this is more robust and gives correct energy values"""
+    warnings.filterwarnings('ignore') 
     atoms_list = []
     len_list = []
     n=0
@@ -67,14 +76,15 @@ def parse_vasp_dir(filepath):
                     all_steps = list(single_file_atom)
                     len_list.append(len(all_steps))
                     for a in single_file_atom:
-                        if a.get_total_energy() < 0 and a.get_total_energy() > -800 :
+                        if a.get_total_energy() < 0:
                             a.info['file'] = filepath.joinpath(i)
                             atoms_list.append(a)
                             e=a.get_total_energy()
                             a.info['relaxed_energy'] = last_energy 
             except Exception as e:
-                    print(f"Error reading file: {OUTCAR}")
-                    print(f"Error details: {e}")
+                    if verbose:
+                        print(f"Error reading file: {OUTCAR}")
+                        print(f"Error details: {e}")
                     continue
             finally:
                     pbar.update(1)
@@ -107,8 +117,10 @@ def create_property_lists(atoms_list):
         relaxed_total_energy = [atom.info['relaxed_energy'] for atom in atoms_list]
         num_atoms_list = [atom.get_global_number_of_atoms() for atom in atoms_list]
         relaxed_energies_per_atom = [energy / num_atoms for energy, num_atoms in zip(relaxed_total_energy, num_atoms_list)]
+        for atom, relaxed_energy_per_atom in zip(atoms_list, relaxed_energies_per_atom):
+            atom.info['relaxed_energy_per_atom'] = relaxed_energy_per_atom
 
-        return(total_energy,energies_per_atom,forces,stresses,relaxed_total_energy,relaxed_energies_per_atom)
+        return(atoms_list,energies_per_atom,forces,stresses,relaxed_energies_per_atom)
 
 def remove_outliers_quartile(atoms_list, energy_per_atom, threshold=None):
     q1 = np.percentile(energy_per_atom, 25)
@@ -228,45 +240,63 @@ def prepare_data(output,atoms_list,energies_per_atom,forces,stresses):
     structures = atoms_to_struct(atoms_list)
     dataset_dict = properties_to_dict(structures,energies_per_atom,forces,stresses)
     write_pickle(dataset_dict,output)
+    print(f"Total number of structures parsed {len(energies_per_atom)}")
+    print('DONE!')
+
+def prepare_mace(output,atoms_list):
+     train_data, test_data = train_test_split(atoms_list, test_size=0.1, random_state=42)
+     print(f"Your number of data is {len(atoms_list)} training data is {len(train_data)} and test data {len(test_data)}")
+     if '.' in str(output):
+          base,old_extension = str(output).rsplit('.',1)
+          train_file = f"{base}_train.xyz"
+          test_file = f"{base}_test.xyz"
+     else: 
+          train_file = f"{base}_train.xyz"
+          test_file = f"{base}_test.xyz"
+     write(train_file,train_data)
+     write(test_file,test_data)
+
+     
 
 def main(): 
-      args = parse_args()
-      output=Path(args.output)
-      filepath=Path(args.input_filepath)
-      filter=args.filter
-      graph=args.graph
-      atoms_list = parse_vasp_dir(filepath)
-      atoms_list = filter_atoms_list(atoms_list)
+    args = parse_args()
+    output = Path(args.output)
+    filepath = Path(args.input_filepath)
+    filter_flag = args.filter
+    graph_flag = args.graph
+    relax_flag = args.relaxed
+    verbose_flag = args.verbose
+    mace_flag = args.mace
+    atoms_list = parse_vasp_dir(filepath,verbose_flag)
+    atoms_list = filter_atoms_list(atoms_list)
+    atoms_list,energies_per_atom, forces, stresses, relaxed_energies_per_atom = create_property_lists(atoms_list) 
+    calculate_stats(relaxed_energies_per_atom if relax_flag else energies_per_atom)
+    
+    energy = relaxed_energies_per_atom if relax_flag else energies_per_atom
+    if filter_flag:
+        energies_per_atom2 = energy
+        atoms_list = remove_outliers_quartile(atoms_list, energy)
+        atoms_list,energies_per_atom, forces, stresses, relaxed_energies_per_atom = create_property_lists(atoms_list)
+        calculate_stats(relaxed_energies_per_atom if relax_flag else energies_per_atom)
+        energy = relaxed_energies_per_atom if relax_flag else energies_per_atom
 
-      # Create property list and show stats
-      total_energy,energies_per_atom,forces,stresses,relaxed_total_energy,relaxed_energies_per_atom = create_property_lists(atoms_list)
-      print("Variability of Relaxed Energy per atom")
-      calculate_stats(relaxed_energies_per_atom)
-      
-      #If user wants graph but not to filter outliers
-      if graph == True and filter == False: 
-           graph_distribution(energies_per_atom)
-      
-      # If user want to filter outliers
-      if filter == True:
-        atoms_list = remove_outliers_quartile(atoms_list,energies_per_atom)
-        total_energy2,energies_per_atom2,forces2,stresses2,relaxed_total_energy2,relaxed_energies_per_atom2 = create_property_lists(atoms_list)
-        print("Variability relaxed energy per atom after filtering outliers")
-        calculate_stats(relaxed_energies_per_atom2)
+    if graph_flag:
+        if filter_flag:
+            if relax_flag:
+                graph_filtered_distribution(energies_per_atom2,relaxed_energies_per_atom )
+            else:
+                graph_filtered_distribution(energies_per_atom2,energies_per_atom)
+        else:
+            if relax_flag:
+                graph_distribution(relaxed_energies_per_atom)
+            else:
+                graph_distribution(energies_per_atom)
 
-        # Filter and graph outliers
-        if filter == True and graph == True:
-            graph_filtered_distribution(energies_per_atom,energies_per_atom2) 
+    if mace_flag: 
+         prepare_mace(output,atoms_list)
+    else:
+        prepare_data(output, atoms_list, energy, forces, stresses)
 
-        # Prepare data and create a pickle file
-        prepare_data(output,atoms_list,energies_per_atom2,forces2,stresses2)
-        print(f"Total number of structures parsed {len(energies_per_atom2)}")
-        print('DONE!')
-      else:
-        prepare_data(output,atoms_list,energies_per_atom,forces,stresses)
-        print(f"Total number of structures parsed {len(energies_per_atom)}")
-        print('DONE!')
-                     
 if __name__ == '__main__':
       main()  
       
