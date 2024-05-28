@@ -117,6 +117,12 @@ def create_property_lists(atoms_list):
         total_energy = [atom.get_total_energy() for atom in atoms_list]
         forces = [np.array(atom.get_forces()) for atom in atoms_list]
         stresses = [np.array(atom.get_stress(voigt=False)) for atom in atoms_list]
+        mag_mom = None  # Initialize mag_mom to None
+
+        try: 
+            mag_mom = [np.array(atom.get_magnetic_moments()) for atom in atoms_list]
+        except Exception as e:
+                print(e)
         num_atoms_list = [atom.get_global_number_of_atoms() for atom in atoms_list]
         energies_per_atom = [energy / num_atoms for energy, num_atoms in zip(total_energy, num_atoms_list)]
         std_energy_per_atom = np.std(energies_per_atom)
@@ -129,7 +135,7 @@ def create_property_lists(atoms_list):
         for atom, relaxed_energy_per_atom in zip(atoms_list, relaxed_energies_per_atom):
             atom.info['relaxed_energy_per_atom'] = relaxed_energy_per_atom
 
-        return(atoms_list,energies_per_atom,forces,stresses,relaxed_energies_per_atom)
+        return(atoms_list,energies_per_atom,forces,stresses,relaxed_energies_per_atom,mag_mom)
 
 def remove_outliers_quartile(atoms_list, energy_per_atom, threshold=None):
     q1 = np.percentile(energy_per_atom, 25)
@@ -232,23 +238,33 @@ def atoms_to_struct(atoms_list):
         structures.append(struct) 
     return(structures)
 
-def properties_to_dict(structures,energies_per_atom,forces,stresses):
-    dataset_dict = {
-    'structure' : structures,
-    'energies' : np.array(energies_per_atom),
-    'forces' : forces,
-    'stress' : np.array(stresses)
-}
-    return(dataset_dict)
+def properties_to_dict(structures, energies_per_atom, forces, stresses, mag_mom=None):
+    data_dict = {
+        'structures': structures,
+        'energies_per_atom': energies_per_atom,
+        'forces': forces,
+        'stresses': stresses
+    }
+    
+    if mag_mom is not None:
+        data_dict['mag_mom'] = mag_mom
+    
+    return data_dict
+
 
 def write_pickle(dataset_dict,output):
      with open(output, "wb") as f:
         pickle.dump(dataset_dict, f)
 
-def prepare_data(output,atoms_list,energies_per_atom,forces,stresses):
+def prepare_data(output, atoms_list, energies_per_atom, forces, stresses, mag_mom=None):
     structures = atoms_to_struct(atoms_list)
-    dataset_dict = properties_to_dict(structures,energies_per_atom,forces,stresses)
-    write_pickle(dataset_dict,output)
+    
+    if mag_mom is not None:
+        dataset_dict = properties_to_dict(structures, energies_per_atom, forces, stresses, mag_mom)
+    else:
+        dataset_dict = properties_to_dict(structures, energies_per_atom, forces, stresses)
+    
+    write_pickle(dataset_dict, output)
     print(f"Total number of structures parsed {len(energies_per_atom)}")
     print('DONE!')
 
@@ -276,25 +292,29 @@ def main():
     relax_flag = args.relaxed
     verbose_flag = args.verbose
     mace_flag = args.mace
-    atoms_list = parse_vasp_dir(filepath,verbose_flag)
+
+    atoms_list = parse_vasp_dir(filepath, verbose_flag)
     atoms_list = filter_atoms_list(atoms_list)
-    atoms_list,energies_per_atom, forces, stresses, relaxed_energies_per_atom = create_property_lists(atoms_list) 
+    
+    # Initial property extraction
+    atoms_list, energies_per_atom, forces, stresses, relaxed_energies_per_atom, mag_mom = create_property_lists(atoms_list)
     calculate_stats(relaxed_energies_per_atom if relax_flag else energies_per_atom)
     
     energy = relaxed_energies_per_atom if relax_flag else energies_per_atom
+    
     if filter_flag:
         energies_per_atom2 = energy
         atoms_list = remove_outliers_quartile(atoms_list, energy)
-        atoms_list,energies_per_atom, forces, stresses, relaxed_energies_per_atom = create_property_lists(atoms_list)
+        atoms_list, energies_per_atom, forces, stresses, relaxed_energies_per_atom, mag_mom = create_property_lists(atoms_list)
         calculate_stats(relaxed_energies_per_atom if relax_flag else energies_per_atom)
         energy = relaxed_energies_per_atom if relax_flag else energies_per_atom
 
     if graph_flag:
         if filter_flag:
             if relax_flag:
-                graph_filtered_distribution(energies_per_atom2,relaxed_energies_per_atom )
+                graph_filtered_distribution(energies_per_atom2, relaxed_energies_per_atom)
             else:
-                graph_filtered_distribution(energies_per_atom2,energies_per_atom)
+                graph_filtered_distribution(energies_per_atom2, energies_per_atom)
         else:
             if relax_flag:
                 graph_distribution(relaxed_energies_per_atom)
@@ -302,10 +322,11 @@ def main():
                 graph_distribution(energies_per_atom)
 
     if mace_flag: 
-         prepare_mace(output,atoms_list)
+        prepare_mace(output, atoms_list)
     else:
-        prepare_data(output, atoms_list, energy, forces, stresses)
+        prepare_data(output, atoms_list, energy, forces, stresses, mag_mom)
 
 if __name__ == '__main__':
-      main()  
+    main()
+
       
