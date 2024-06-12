@@ -31,6 +31,7 @@ import seaborn as sns
 from pymatgen.core.structure import Structure
 from pymatgen.analysis.local_env import VoronoiNN
 from mace.calculators import MACECalculator
+import torch
 
 warnings.filterwarnings("ignore", message="No oxidation states specified on sites!")
 warnings.filterwarnings("ignore", message="CrystalNN: cannot locate an appropriate radius")
@@ -81,13 +82,15 @@ def mace_inference(atoms_list,model_path=None):
         with contextlib.redirect_stdout(fnull):
             if model_path:
                 print('Using model to calculate')
-                calc = MACECalculator(model_path,device='cpu')
+                calc = MACECalculator(model_paths=model_path,device='cpu')
             else: 
-                calc = mace_mp(model="large", dispersion=True, default_dtype="float32", device='cpu', verbose=True)
+                calc = mace_mp(model="large", dispersion=True, device='cpu', verbose=True)
     for atom, atom_ne in zip(atoms_list, no_energy_atoms):
         atom_ne.calc = calc
         e = atom_ne.get_total_energy()
+        f = atom_ne.get_forces()
         atom.info['mace_energy'] = e
+        atom.info['mace_forces'] = f
     return atoms_list
 
 def chgnet_inference(atoms_list, model_path=None):
@@ -98,6 +101,7 @@ def chgnet_inference(atoms_list, model_path=None):
             with contextlib.redirect_stdout(fnull):
                 if model_path:
                     loaded_model = CHGNet.from_file(model_path, use_device='cpu', verbose=False)
+                    loaded_model = loaded_model.to(torch.float32)
                     prediction = loaded_model.predict_structure(structure)
                 else:
                     chgnet = CHGNet.load()
@@ -242,23 +246,23 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
                 data.append({
                     'File': basename,
                     'Total Energy': total_energy,
-                    'Opt ΔE': dft_diff,
-                    'MACE Energy': mace_energy,
-                    'ΔE_MACE': mace_delta_E,
-                    'Opt ΔE_MACE': mace_opt_diff,
-                    'Opt ΔΔE_MACE': mace_opt_delta,
-                    'MACE Force MSE': mace_mse
+                    'Opt Δ (DFT)': dft_diff,
+                    'MLFF Energy': mace_energy,
+                    'ΔE (DFT-MLFF)': mace_delta_E,
+                    'Opt ΔE (MLFF)': mace_opt_diff,
+                    'Opt ΔΔE (DFT - MLFF)': mace_opt_delta,
+                    'MLFF Force MSE (DFT - MLFF)': mace_mse
                 })
             else:
                 data.append({
                     'File': basename,
                     'Total Energy': total_energy,
-                    'Opt ΔE': dft_diff,
-                    'CHGnet Energy': chgnet_energy,
-                    'ΔE_CHGnet': chgnet_delta_E,
-                    'Opt ΔE_CHGnet': chgnet_opt_diff,
-                    'Opt ΔΔE_CHGnet': chgnet_opt_delta,
-                    'CHGnet Force MSE': chgnet_mse
+                    'Opt Δ (DFT)': dft_diff,
+                    'MLFF Energy': chgnet_energy,
+                    'ΔE (DFT-MLFF)': chgnet_delta_E,
+                    'Opt ΔE (MLFF)': chgnet_opt_diff,
+                    'Opt ΔΔE (DFT - MLFF)': chgnet_opt_delta,
+                    'MLFF Force MSE (DFT - MLFF)': chgnet_mse
                 })
 
     df = pd.DataFrame(data)
@@ -266,19 +270,23 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
 
 def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None):
     if mace_flag:
+        print('Running MACE')
         atoms_list = mace_inference(atoms_list,model_path)
         opt_atoms_list = mace_inference(opt_atoms_list,model_path)
-    #Run CHGNet inference
-    atoms_list = chgnet_inference(atoms_list,model_path)
-    opt_atoms_list = chgnet_inference(opt_atoms_list,model_path)
+    else:
+        print('Running')
+        #Run CHGNet inference
+        atoms_list = chgnet_inference(atoms_list,model_path)
+        opt_atoms_list = chgnet_inference(opt_atoms_list,model_path)
     #Find difference in atoms
     atoms_list = opt_energy_diff(atoms_list,opt_atoms_list)
     #Group and sort atoms by natoms
     grouped_atoms = group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list)
     grouped_atoms_sorted = rank_atoms_by_energy(grouped_atoms)
     #Create dataframe
-    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag=mace_flag)
+    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag)
     return(df)
+
 
 def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     chgnet_MAE = []
@@ -286,10 +294,10 @@ def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     
     # Calculate mean absolute errors (MAEs) for each dataframe
     for df in dataframes: 
-        chgnet_error = df['ΔE_CHGnet'].abs().mean()
+        chgnet_error = df['ΔE (DFT-MLFF)'].abs().mean()
         chgnet_MAE.append(chgnet_error)
         
-        chgnet_opt_error = df['Opt ΔΔE_CHGnet'].abs().mean()
+        chgnet_opt_error = df['Opt ΔΔE (DFT - MLFF)'].abs().mean()
         chgnet_opt_MAE.append(chgnet_opt_error)
     
     # Create the bar graph
@@ -320,10 +328,10 @@ def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     
     # Calculate mean absolute errors (MAEs) for each dataframe
     for df in dataframes: 
-        chgnet_error = df['ΔE_CHGnet'].abs().mean()
+        chgnet_error = df['ΔE (DFT-MLFF)'].abs().mean()
         chgnet_MAE.append(chgnet_error)
         
-        chgnet_opt_error = df['Opt ΔΔE_CHGnet'].abs().mean()
+        chgnet_opt_error = df['Opt ΔΔE (DFT - MLFF)'].abs().mean()
         chgnet_opt_MAE.append(chgnet_opt_error)
     
     # Create the bar graph
@@ -333,10 +341,10 @@ def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     fig, ax = plt.subplots()
     
     # Plot CHGnet MAEs
-    ax.bar(x, chgnet_MAE, width, label='CHGnet MAE')
+    ax.bar(x, chgnet_MAE, width, label='MLFF MAE')
     
     # Plot optimized CHGnet MAEs with an offset to avoid overlapping
-    ax.bar([p + width for p in x], chgnet_opt_MAE, width, label='Optimized CHGnet MAE')
+    ax.bar([p + width for p in x], chgnet_opt_MAE, width, label='Optimized MLFF MAE')
 
     # Add labels, title, and legend
     ax.set_xlabel('Models')
@@ -352,7 +360,7 @@ def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
     
     # Calculate mean squared errors (MSEs) for each dataframe
     for df in dataframes: 
-        chgnet_mse = df['CHGnet Force MSE'].mean()
+        chgnet_mse = df['MLFF Force MSE (DFT - MLFF)'].mean()
         chgnet_MSE.append(chgnet_mse)
     
     # Create the bar graph
