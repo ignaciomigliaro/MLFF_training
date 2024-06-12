@@ -243,11 +243,6 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
                     'File': basename,
                     'Total Energy': total_energy,
                     'Opt ΔE': dft_diff,
-                    'CHGnet Energy': chgnet_energy,
-                    'ΔE_CHGnet': chgnet_delta_E,
-                    'Opt ΔE_CHGnet': chgnet_opt_diff,
-                    'Opt ΔΔE_CHGnet': chgnet_opt_delta,
-                    'CHGnet Force MSE': chgnet_mse,
                     'MACE Energy': mace_energy,
                     'ΔE_MACE': mace_delta_E,
                     'Opt ΔE_MACE': mace_opt_diff,
@@ -269,10 +264,10 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
     df = pd.DataFrame(data)
     return df
 
-def inference(atoms_list,opt_atoms_list,model_path,mace_model=None):
-    if mace_model:
-        atoms_list = mace_inference(atoms_list,mace_model)
-        opt_atoms_list = mace_inference(opt_atoms_list,mace_model)
+def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None):
+    if mace_flag:
+        atoms_list = mace_inference(atoms_list,model_path)
+        opt_atoms_list = mace_inference(opt_atoms_list,model_path)
     #Run CHGNet inference
     atoms_list = chgnet_inference(atoms_list,model_path)
     opt_atoms_list = chgnet_inference(opt_atoms_list,model_path)
@@ -282,7 +277,7 @@ def inference(atoms_list,opt_atoms_list,model_path,mace_model=None):
     grouped_atoms = group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list)
     grouped_atoms_sorted = rank_atoms_by_energy(grouped_atoms)
     #Create dataframe
-    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_model)
+    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag=mace_flag)
     return(df)
 
 def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
