@@ -385,6 +385,7 @@ def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
 
 def optimize(model, outcar_path, verbose=False,fmax=0.05):
     loaded_model = CHGNet.from_file(model, use_device='cpu', verbose=verbose)
+    loaded_model = loaded_model.to(torch.float32)
     all_atoms = read(outcar_path, index=':')
     first_atom = all_atoms[0]
     last_atom = all_atoms[-1]
