@@ -32,12 +32,10 @@ from pymatgen.core.structure import Structure
 from pymatgen.analysis.local_env import VoronoiNN
 from mace.calculators import MACECalculator
 import torch
+from scipy.stats import spearmanr
+from scipy.stats import pearsonr
 
-warnings.filterwarnings("ignore", message="No oxidation states specified on sites!")
-warnings.filterwarnings("ignore", message="CrystalNN: cannot locate an appropriate radius")
-
-
-
+#Parse DFT data
 def read_dft(filepath):
     """This function reads the DFT files from the given Directory, groups the files by the number of Atoms."""
     atoms_list = []
@@ -64,18 +62,18 @@ def read_dft(filepath):
             finally:
                 pbar.update(1)
     return(atoms_list,opt_atoms_list)
-
+#Create an atoms object with no energy value
 def create_empty_atom(atom):
     empty_atom = Atoms(numbers=atom.get_atomic_numbers(), positions=atom.get_positions(),cell=atom.get_cell())
     return empty_atom
-
+#Create a list of atoms objects with no energy (needed for running inference with MLFF)
 def create_empty_atom_list(atoms_list):
     no_energy_atoms = []
     for atom in atoms_list: 
         empty_atom = create_empty_atom(atom)
         no_energy_atoms.append(empty_atom)
     return no_energy_atoms
-
+#Run inference using MACE MLFF
 def mace_inference(atoms_list,model_path=None):
     no_energy_atoms = create_empty_atom_list(atoms_list)
     with open(os.devnull, 'w') as fnull:
@@ -92,7 +90,7 @@ def mace_inference(atoms_list,model_path=None):
         atom.info['mace_energy'] = e
         atom.info['mace_forces'] = f
     return atoms_list
-
+#Run inference using Chgnet MLFF
 def chgnet_inference(atoms_list, model_path=None):
     no_energy_atoms = create_empty_atom_list(atoms_list)
     for atom, atom_ne in zip(atoms_list, no_energy_atoms):
@@ -113,7 +111,7 @@ def chgnet_inference(atoms_list, model_path=None):
         atom.info['chgnet_energy'] = energy
         atom.info['chgnet_forces'] = np.array(forces)
     return atoms_list
-
+#Calculates the energy differences from starting to finished structure
 def opt_energy_diff(atoms_list,opt_atoms_list):
     "This function is to calculate the energy difference between starting energy and final from optimization"
     for atom, opt_atom in zip(atoms_list,opt_atoms_list):
@@ -128,7 +126,7 @@ def opt_energy_diff(atoms_list,opt_atoms_list):
                 e_diff_mace= atom.info.get('mace_energy') - opt_atom.info .get('mace_energy')
                 atom.info['opt_e_diff_mace'] = e_diff_mace
     return(atoms_list)
-
+#Groups atoms if they have all the same atomic symbols
 def group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list):
     if not atoms_list :
         raise ValueError("The input lists are empty")
@@ -152,6 +150,7 @@ def group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list):
 
     
     return grouped_atoms
+#Ranks the atoms by their energy
 def rank_atoms_by_energy(grouped_atoms):
     """Sorts groups of atoms based on the total number of atoms and then sorts the atoms within each group by their total energy."""
     # Sort groups based on the total number of atoms
@@ -162,7 +161,7 @@ def rank_atoms_by_energy(grouped_atoms):
         grouped_atoms_sorted[num_atoms] = sorted(atoms_list, key=lambda atom: atom.get_total_energy())
     
     return grouped_atoms_sorted
-
+#Prints the energies if needed 
 def print_sorted_energies(grouped_atoms_sorted,mace_flag=None):
     """Prints the total energy and MACE energy of each atom in each group in the sorted dictionary."""
     for num_atoms, atoms_list in grouped_atoms_sorted.items():
@@ -177,27 +176,10 @@ def print_sorted_energies(grouped_atoms_sorted,mace_flag=None):
                 print(f"File: {basename}, Total Energy: {total_energy}, CHGnet Energy: {chgnet_energy} MACE Energy: {mace_energy}")
             else: 
                 print(f"File: {basename}, Total Energy: {total_energy}, CHGnet Energy: {chgnet_energy} ")
-
-
-def print_sorted_energies(grouped_atoms_sorted,mace_flag=None):
-    """Prints the total energy and MACE energy of each atom in each group in the sorted dictionary."""
-    for num_atoms, atoms_list in grouped_atoms_sorted.items():
-        print(f"Total energy for group with {num_atoms} atoms:")
-        for atom in atoms_list:
-            file_path = atom.info.get('file', 'File path not available')
-            total_energy = atom.get_total_energy()
-            chgnet_energy = atom.info.get('chgnet_inference','Chgnet energy not available')
-            basename = os.path.basename(file_path)
-            if mace_flag:
-                mace_energy = atom.info.get('mace_energy', 'MACE energy not available')
-                print(f"File: {basename}, Total Energy: {total_energy}, CHGnet Energy: {chgnet_energy} MACE Energy: {mace_energy}")
-            else: 
-                print(f"File: {basename}, Total Energy: {total_energy}, CHGnet Energy: {chgnet_energy} ")
-            
-
+#calculates MSE of forces
 def mean_square_error(true_forces, predicted_forces):
     return np.mean((true_forces - predicted_forces) ** 2)
-
+#Gets the sorted atoms, and creates a Dataframe with multiple properties.
 def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
     """Returns a DataFrame with the total energy, CHGnet energy, MACE energy (optional), their differences, and the MSE of the forces for each atom in each group in the sorted dictionary."""
     data = []
@@ -245,36 +227,54 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
 
                 data.append({
                     'File': basename,
-                    'Total Energy': total_energy,
-                    'Opt Δ (DFT)': dft_diff,
-                    'MLFF Energy': mace_energy,
-                    'ΔE (DFT-MLFF)': mace_delta_E,
-                    'Opt ΔE (MLFF)': mace_opt_diff,
-                    'Opt ΔΔE (DFT - MLFF)': mace_opt_delta,
-                    'MLFF Force MSE (DFT - MLFF)': mace_mse
+                    'DFT E': round(total_energy, 3),
+                    'Opt Δ (DFT)': round(dft_diff, 3),
+                    'MLFF E': round(mace_energy, 3),
+                    'ΔE': round(mace_delta_E, 3),
+                    'Opt ΔE (MLFF)': round(mace_opt_diff, 3),
+                    'Opt ΔΔE': round(mace_opt_delta, 3),
+                    'Forces MSE': round(mace_mse, 3) if mace_mse is not None else None,
+                    'natom': num_atoms
                 })
             else:
                 data.append({
                     'File': basename,
-                    'Total Energy': total_energy,
-                    'Opt Δ (DFT)': dft_diff,
-                    'MLFF Energy': chgnet_energy,
-                    'ΔE (DFT-MLFF)': chgnet_delta_E,
-                    'Opt ΔE (MLFF)': chgnet_opt_diff,
-                    'Opt ΔΔE (DFT - MLFF)': chgnet_opt_delta,
-                    'MLFF Force MSE (DFT - MLFF)': chgnet_mse
+                    'DFT E': round(total_energy, 3),
+                    'Opt Δ (DFT)': round(dft_diff, 3),
+                    'MLFF E': round(chgnet_energy, 3),
+                    'ΔE': round(chgnet_delta_E, 3),
+                    'Opt ΔE (MLFF)': round(chgnet_opt_diff, 3),
+                    'Opt ΔΔE': round(chgnet_opt_delta, 3),
+                    'Forces MSE': round(chgnet_mse, 3) if chgnet_mse is not None else None,
+                    'natom': num_atoms
                 })
 
     df = pd.DataFrame(data)
-    return df
+    
+    # Calculate Spearman rank correlation for each group of `natom`
+    correlations = {}
+    for natom, group in df.groupby('natom'):
+        group['DFT Rank'] = group['DFT E'].rank(ascending=True, method='min').astype(int)
+        group['MLFF Rank'] = group['MLFF E'].rank(ascending=True, method='min').astype(int)
+        correlation, _ = pearsonr(group['DFT Rank'], group['MLFF Rank'])
+        correlations[natom] = correlation
+        
+        # Update the original DataFrame with ranks
+        df.loc[group.index, 'DFT Rank'] = group['DFT Rank']
+        df.loc[group.index, 'MLFF Rank'] = group['MLFF Rank']
+    
+    # Add correlation as a new column with the same value for each row in the group
+    df['Rank ρ'] = df['natom'].map(correlations)
 
+    return df
+#Calls all inference functions and calculates energies for all of the test set
 def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None):
     if mace_flag:
         print('Running MACE')
         atoms_list = mace_inference(atoms_list,model_path)
         opt_atoms_list = mace_inference(opt_atoms_list,model_path)
     else:
-        print('Running')
+        print('Running CHgnet')
         #Run CHGNet inference
         atoms_list = chgnet_inference(atoms_list,model_path)
         opt_atoms_list = chgnet_inference(opt_atoms_list,model_path)
@@ -286,18 +286,17 @@ def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None):
     #Create dataframe
     df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag)
     return(df)
-
-
+#Plots the mean absolute error of the energies for each model
 def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     chgnet_MAE = []
     chgnet_opt_MAE = []
     
     # Calculate mean absolute errors (MAEs) for each dataframe
     for df in dataframes: 
-        chgnet_error = df['ΔE (DFT-MLFF)'].abs().mean()
+        chgnet_error = df['ΔE'].abs().mean()
         chgnet_MAE.append(chgnet_error)
         
-        chgnet_opt_error = df['Opt ΔΔE (DFT - MLFF)'].abs().mean()
+        chgnet_opt_error = df['Opt ΔΔE'].abs().mean()
         chgnet_opt_MAE.append(chgnet_opt_error)
     
     # Create the bar graph
@@ -320,41 +319,7 @@ def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     ax.set_xticklabels(dataframe_names,rotation=90)
     ax.legend()
     plt.show()
-
-
-def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
-    chgnet_MAE = []
-    chgnet_opt_MAE = []
-    
-    # Calculate mean absolute errors (MAEs) for each dataframe
-    for df in dataframes: 
-        chgnet_error = df['ΔE (DFT-MLFF)'].abs().mean()
-        chgnet_MAE.append(chgnet_error)
-        
-        chgnet_opt_error = df['Opt ΔΔE (DFT - MLFF)'].abs().mean()
-        chgnet_opt_MAE.append(chgnet_opt_error)
-    
-    # Create the bar graph
-    x = range(len(dataframes))  # X-axis positions for each dataframe
-    width = 0.35  # Width of the bars
-
-    fig, ax = plt.subplots()
-    
-    # Plot CHGnet MAEs
-    ax.bar(x, chgnet_MAE, width, label='MLFF MAE')
-    
-    # Plot optimized CHGnet MAEs with an offset to avoid overlapping
-    ax.bar([p + width for p in x], chgnet_opt_MAE, width, label='Optimized MLFF MAE')
-
-    # Add labels, title, and legend
-    ax.set_xlabel('Models')
-    ax.set_ylabel('Mean Absolute Error (eV)')
-    ax.set_title('Comparison of Mean Absolute Errors')
-    ax.set_xticks([p + width/2 for p in x])
-    ax.set_xticklabels(dataframe_names,rotation=90)
-    ax.legend()
-    plt.show()  
-    
+#Creates bar graph of MSE of Forces of each model
 def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
     chgnet_MSE = []
     
@@ -382,7 +347,49 @@ def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
 
     plt.tight_layout()  # Adjust layout to make room for the rotated labels
     plt.show()    
+#Createas a bar graph for the Rank correlation of each of the models
+def plot_rank_correlation(data_dicts,dataframe_names):
+    dataframes = []
+    for data_dict in data_dicts:
+        df = pd.DataFrame(data_dict)
+        dataframes.append(df)
+    
+    natom_values = sorted({natom for df in dataframes for natom in df['natom'].unique()})
+    num_dataframes = len(dataframes)
+    num_natoms = len(natom_values)
+    
+    # Calculate the width for each group of bars and the total figure width
+    bar_width = 0.8 / num_natoms
+    x_positions = np.arange(num_dataframes)  # X positions for dataframes
 
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    for idx, natom in enumerate(natom_values):
+        rank_rho_per_dataframe = {}
+        for df_idx, df in enumerate(dataframes, start=1):
+            subset_df = df[df['natom'] == natom]
+            unique_rank_rho_values = subset_df['Rank ρ'].unique()
+            
+            if len(unique_rank_rho_values) == 1:
+                rank_rho_per_dataframe[df_idx] = unique_rank_rho_values[0]
+            else:
+                print(f"Warning: Inconsistent 'Rank ρ' values for natom{natom} in dataframe {df_idx}.")
+        
+        ranks = [rank_rho_per_dataframe.get(i, 0) for i in range(1, num_dataframes + 1)]
+        ax.bar(x_positions + (idx - num_natoms/2) * bar_width, ranks, width=bar_width, label=f'natom{natom}')
+
+    ax.set_xlabel('Dataframe Name')
+    ax.set_ylabel('Rank ρ')
+    ax.set_title('Rank ρ for Different natom Values Across Dataframes')
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(dataframe_names, rotation=90)  # Rotate x-axis labels to 90 degrees
+    ax.legend(title='natom', bbox_to_anchor=(1.02, 1), loc='upper left')  # Move legend outside of the plot area
+    
+    ax.set_ylim(0, 1)  # Set y-axis limits
+    
+    plt.tight_layout()
+    plt.show()
+#Optimizes the initial structure of an outcar file and compares to the optimized structure by DFT for Chgnet
 def optimize(model, outcar_path, verbose=False,fmax=0.05):
     loaded_model = CHGNet.from_file(model, use_device='cpu', verbose=verbose)
     loaded_model = loaded_model.to(torch.float32)
@@ -394,9 +401,7 @@ def optimize(model, outcar_path, verbose=False,fmax=0.05):
     trajectory = StructOptimizer(loaded_model).relax(first_struct, verbose=verbose, relax_cell=True, fmax=fmax)["trajectory"]
     last_struct = AseAtomsAdaptor().get_structure(last_atom)
     return (trajectory, first_struct, last_struct,dft_energy)
-
-
-
+#Needed to run the dash app 
 def prepare_data(trajectory):
     """Prepare the input data from the trajectory."""
     e_col = "Energy (eV)"
@@ -411,7 +416,7 @@ def prepare_data(trajectory):
     df_traj.index.name = "step"
     
     return df_traj, e_col, force_col
-
+#Dash app to show the optimization
 def create_dash_app(trajectory, df_traj, e_col, force_col, structure, dft_energy):
     """Create and run the Dash app for visualizing the structure relaxation trajectory."""
     mp_id = 'NbOC'
@@ -506,12 +511,11 @@ def create_dash_app(trajectory, df_traj, e_col, force_col, structure, dft_energy
         return structure, fig
 
     app.run_server(debug=True, use_reloader=False)
-
 # Function to integrate data preparation and app creation
 def visualize_trajectory(trajectory, structure, dft_energy):
     df_traj, e_col, force_col = prepare_data(trajectory)
     create_dash_app(trajectory, df_traj, e_col, force_col, structure, dft_energy)
-
+#Calculates bond distance of structure object
 def calculate_bond_distances(structure):
     # Initialize the Voronoi nearest neighbors finder
     voro_nn = VoronoiNN()
@@ -524,7 +528,7 @@ def calculate_bond_distances(structure):
             if neighbor_site in structure:
                 bond_distances.append(structure[i].distance(neighbor_site))
     return bond_distances
-
+#Calculates bond angles of Structure object
 def calculate_bond_angles(structure):
     # Initialize the Voronoi nearest neighbors finder
     voro_nn = VoronoiNN()
@@ -542,13 +546,13 @@ def calculate_bond_angles(structure):
                 angle = structure.get_angle(i, neighbor_indices[j], neighbor_indices[k])
                 bond_angles.append(angle)
     return bond_angles
-
+#Plots KDE plots of bond length 
 def plot_kde(bond_data, title, xlabel, color, label):
     sns.kdeplot(bond_data, fill=True, color=color, label=label)
     plt.xlabel(xlabel)
     plt.ylabel("Density")
     plt.title(title)
-
+#Plots KDE of bond angles. 
 def plot_bond_distributions(structure1, structure2):
     # Calculate bond distances and bond angles
     bond_distances_1 = calculate_bond_distances(structure1)
@@ -571,11 +575,10 @@ def plot_bond_distributions(structure1, structure2):
 
     plt.tight_layout()
     plt.show()
-
+#Get the lattice parameters of MLFF and DFT optimized structure
 def get_lattice_params(struct):
     return struct.lattice.a, struct.lattice.b, struct.lattice.c
-
-
+#Prints the crystal lattice parameters
 def optimization_summary(mlff_struct, dft_struct):
     mlff_volume = round(mlff_struct.volume, 3)
     dft_volume = round(dft_struct.volume, 3)
@@ -607,7 +610,7 @@ def optimization_summary(mlff_struct, dft_struct):
     print(f"Lattice parameters a: MLFF = {mlff_a}, DFT = {dft_a}, Difference (DFT - MLFF) = {a_diff}")
     print(f"Lattice parameters b: MLFF = {mlff_b}, DFT = {dft_b}, Difference (DFT - MLFF) = {b_diff}")
     print(f"Lattice parameters c: MLFF = {mlff_c}, DFT = {dft_c}, Difference (DFT - MLFF) = {c_diff}")
-
+#Optimizes structure with MACE
 def mace_optimize(model_path,outcar_path,verbose=False,fmax=0.005):
     #Function to optimize structure using MACE model
     from mace.calculators import MACECalculator
