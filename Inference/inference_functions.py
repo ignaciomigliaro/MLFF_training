@@ -325,7 +325,7 @@ def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
     
     # Calculate mean squared errors (MSEs) for each dataframe
     for df in dataframes: 
-        chgnet_mse = df['MLFF Force MSE (DFT - MLFF)'].mean()
+        chgnet_mse = df['Forces MSE'].mean()
         chgnet_MSE.append(chgnet_mse)
     
     # Create the bar graph
@@ -634,10 +634,11 @@ def load_and_predict(model_path, structure):
 
 def energy_variance(filepath, model1, model2, model3):
     structure = Structure.from_file(filepath)
-    
-    energies = [
-        load_and_predict(model1, structure),
-        load_and_predict(model2, structure),
-        load_and_predict(model3, structure)
-    ]
+    with open(os.devnull, 'w') as fnull:
+            with contextlib.redirect_stdout(fnull):
+                energies = [
+                    load_and_predict(model1, structure),
+                    load_and_predict(model2, structure),
+                    load_and_predict(model3, structure)
+                ]
     return energies,np.std(energies)
