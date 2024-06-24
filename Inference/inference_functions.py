@@ -625,3 +625,19 @@ def mace_optimize(model_path,outcar_path,verbose=False,fmax=0.005):
     opt_struct = AseAtomsAdaptor().get_structure(first_atom)
     dft_struct = AseAtomsAdaptor().get_structure(last_atom)
     return(opt_struct,dft_struct)
+
+def load_and_predict(model_path, structure):
+    model = CHGNet.from_file(model_path, use_device="cpu", verbose=False)
+    prediction = model.predict_structure(structure)
+    total = sum(len(site.species) for site in structure.sites)
+    return prediction['e'] * total
+
+def energy_variance(filepath, model1, model2, model3):
+    structure = Structure.from_file(filepath)
+    
+    energies = [
+        load_and_predict(model1, structure),
+        load_and_predict(model2, structure),
+        load_and_predict(model3, structure)
+    ]
+    return energies,np.std(energies)
