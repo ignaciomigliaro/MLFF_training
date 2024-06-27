@@ -44,23 +44,24 @@ def read_dft(filepath):
     total_iterations = len(os.listdir(filepath))
     with tqdm(total=total_iterations, desc='Processing') as pbar:
         for i in os.listdir(filepath):
-            OUTCAR = filepath + i + '/OUTCAR'
-            try:
-                single_file_atom = read(OUTCAR, format='vasp-out', index=':')
-                last_energy = single_file_atom[-1]
-                atom = single_file_atom[0]
-                atom.info['file'] = filepath + i
-                last_energy.info['file'] = filepath + i 
-                atom.info['step'] = 'first step'
-                last_energy.info['step'] = 'last step'
-                atoms_list.append(atom)
-                opt_atoms_list.append(last_energy)     
-            except Exception as e:
-                print(f"Error reading file: {filepath}")
-                print(f"Error details: {e}")
-                continue
-            finally:
-                pbar.update(1)
+            if os.path.isdir(i):
+                OUTCAR = filepath + i + '/OUTCAR'
+                try:
+                    single_file_atom = read(OUTCAR, format='vasp-out', index=':')
+                    last_energy = single_file_atom[-1]
+                    atom = single_file_atom[0]
+                    atom.info['file'] = filepath + i
+                    last_energy.info['file'] = filepath + i 
+                    atom.info['step'] = 'first step'
+                    last_energy.info['step'] = 'last step'
+                    atoms_list.append(atom)
+                    opt_atoms_list.append(last_energy)     
+                except Exception as e:
+                    print(f"Error reading file: {filepath}")
+                    print(f"Error details: {e}")
+                    continue
+                finally:
+                    pbar.update(1)
     return(atoms_list,opt_atoms_list)
 #Create an atoms object with no energy value
 def create_empty_atom(atom):
