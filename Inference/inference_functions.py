@@ -34,6 +34,8 @@ from mace.calculators import MACECalculator
 import torch
 from scipy.stats import spearmanr
 from scipy.stats import pearsonr
+from scipy import stats
+
 
 #Parse DFT data
 def read_dft(filepath):
@@ -44,7 +46,7 @@ def read_dft(filepath):
     total_iterations = len(os.listdir(filepath))
     with tqdm(total=total_iterations, desc='Processing') as pbar:
         for i in os.listdir(filepath):
-            if os.path.isdir(i):
+            if os.path.isdir(filepath+i):
                 OUTCAR = filepath + i + '/OUTCAR'
                 try:
                     single_file_atom = read(OUTCAR, format='vasp-out', index=':')
@@ -54,10 +56,11 @@ def read_dft(filepath):
                     last_energy.info['file'] = filepath + i 
                     atom.info['step'] = 'first step'
                     last_energy.info['step'] = 'last step'
-                    atoms_list.append(atom)
-                    opt_atoms_list.append(last_energy)     
+                    if atom is not None and last_energy is not None:
+                        atoms_list.append(atom)
+                        opt_atoms_list.append(last_energy)     
                 except Exception as e:
-                    print(f"Error reading file: {filepath}")
+                    print(f"Error reading file: {OUTCAR}")
                     print(f"Error details: {e}")
                     continue
                 finally:
@@ -391,6 +394,37 @@ def plot_rank_correlation(data_dicts,dataframe_names):
     plt.tight_layout()
     plt.show()
 #Optimizes the initial structure of an outcar file and compares to the optimized structure by DFT for Chgnet
+def plot_mlff_dft_rank(df):
+    DFT_Rank = df['DFT Rank']
+    MLFF_Rank = df['MLFF Rank']
+
+    # Create scatter plot
+    plt.scatter(DFT_Rank, MLFF_Rank, label='Data points',color='black')
+
+    # Fit a line to the data using linear regression
+    slope, intercept, r_value, p_value, std_err = stats.linregress(DFT_Rank, MLFF_Rank)
+    trendline = slope * DFT_Rank + intercept
+
+    # Calculate Pearson correlation coefficient
+    pearson_corr, _ = stats.pearsonr(DFT_Rank, MLFF_Rank)
+
+    # Plot the trendline
+    plt.plot(DFT_Rank, trendline, color='red', label='Trendline')
+
+    # Calculate and display the R^2 value
+    r_squared = r_value**2
+    plt.text(5, max(MLFF_Rank/2), f'$R^2 = {r_squared:.3f}$', color='black')
+
+    # Display Pearson correlation coefficient
+
+    # Add labels and legend
+    plt.xlabel('DFT Rank')
+    plt.ylabel('MLFF Rank')
+    plt.title('Rank comparison of MLFF and DFT')
+    plt.legend()
+
+    # Show plot
+    plt.show()
 def optimize(model, outcar_path, verbose=False,fmax=0.05):
     loaded_model = CHGNet.from_file(model, use_device='cpu', verbose=verbose)
     loaded_model = loaded_model.to(torch.float32)
