@@ -59,7 +59,7 @@ def read_dft(filepath,mlff_opt=False):
                     last_energy.info['file'] = filepath + i 
                     atom.info['step'] = 'first step'
                     last_energy.info['step'] = 'last step'
-                    if mlff_opt_energy:
+                    if mlff_opt is True:
                         atom.info['mlff_opt_energy'] = mlff_opt_energy
                     if atom is not None and last_energy is not None:
                         atoms_list.append(atom)
