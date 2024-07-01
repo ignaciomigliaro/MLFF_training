@@ -211,7 +211,8 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
             chgnet_energy = atom.info.get('chgnet_energy', 'Chgnet energy not available')
             dft_diff = atom.info.get('opt_e_diff')
             basename = os.path.basename(file_path)
-            mlff_opt_energy = atom.info['mlff_opt_energy']
+            if mlff_opt:
+                mlff_opt_energy = atom.info['mlff_opt_energy']
             # Calculate the differences
             chgnet_delta_E = None
             mace_delta_E = None
