@@ -216,15 +216,12 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
             # Calculate the differences
             chgnet_delta_E = None
             mace_delta_E = None
-            chgnet_opt_delta = None
-            mace_opt_delta = None
             chgnet_mse = None
             mace_mse = None
 
             if isinstance(chgnet_energy, (int, float)):
                 chgnet_delta_E = total_energy - chgnet_energy
                 chgnet_opt_diff = atom.info.get('opt_e_diff_chgnet', 'CHGnet opt energy not available')
-                chgnet_opt_delta = dft_diff - chgnet_opt_diff
                 
                 # Calculate CHGnet force MSE
                 chgnet_forces = atom.info.get('chgnet_forces')
@@ -235,10 +232,9 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
             if mace_flag:
                 mace_energy = atom.info.get('mace_energy', 'MACE energy not available')
                 mace_opt_diff = atom.info.get('opt_e_diff_mace', 'MACE opt energy not available')
-                mace_opt_delta = dft_diff - mace_opt_diff
 
                 if isinstance(mace_energy, (int, float)):
-                    mace_delta_E = mace_energy - total_energy
+                    mace_delta_E = total_energy - mace_energy 
                 
                 # Calculate MACE force MSE
                 mace_forces = atom.info.get('mace_forces')
@@ -248,13 +244,11 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
 
                 data.append({
                     'File': basename,
-                    'MLFF_opt_E':mlff_opt_energy,+ 
                     'DFT E': round(total_energy/num_atoms, 3),
-                    'Opt Δ (DFT)': round(dft_diff/num_atoms, 3),
                     'MLFF E': round(mace_energy/num_atoms, 3),
                     'ΔE': round(mace_delta_E/num_atoms, 3),
-                    'Opt ΔE (MLFF)': round(mace_opt_diff/num_atoms, 3),
-                    'Opt ΔΔE': round(mace_opt_delta/num_atoms, 3),
+                    'DFT Forces': np.mean(dft_forces.flatten()), 
+                    'MLFF Forces':np.mean(mace_forces.flatten()) if mace_forces is not None else None,
                     'Forces MSE': round(mace_mse, 3) if mace_mse is not None else None,
                     'natom': num_atoms,
                     
@@ -263,11 +257,10 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
                 data.append({
                     'File': basename,
                     'DFT E': round(total_energy/num_atoms, 3),
-                    'Opt Δ (DFT)': round(dft_diff/num_atoms, 3),
                     'MLFF E': round(chgnet_energy/num_atoms, 3),
                     'ΔE': round(chgnet_delta_E/num_atoms, 3),
-                    'Opt ΔE (MLFF)': round(chgnet_opt_diff/num_atoms, 3),
-                    'Opt ΔΔE': round(chgnet_opt_delta/num_atoms, 3),
+                    'DFT Forces': np.mean(dft_forces.flatten()), 
+                    'MLFF Forces':np.mean(chgnet_forces.flatten()) if chgnet_forces is not None else None,
                     'Forces MSE': round(chgnet_mse, 3) if chgnet_mse is not None else None,
                     'natom': num_atoms
                 })
@@ -280,14 +273,10 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
         df['DFT Rank'] = df['DFT E'].rank(ascending=True, method='dense').astype(int)
         df['MLFF Rank'] = df['MLFF E'].rank(ascending=True, method='dense',numeric_only=True).astype(int)
         correlation, _ = pearsonr(df['DFT Rank'], df['MLFF Rank'])
-        df['Rank ρ'] = correlation
-    else:
-        df['Rank ρ'] = None
-
     return df
 
 #Calls all inference functions and calculates energies for all of the test set
-def inference(atoms_list, opt_atoms_list, model_path, mace_flag=None, mlff_opt=None, calc_correlation=False):
+def inference(atoms_list, opt_atoms_list, model_path=None, mace_flag=None, mlff_opt=None, calc_correlation=False):
     if mace_flag:
         print('Running MACE')
         atoms_list = mace_inference(atoms_list,model_path)
