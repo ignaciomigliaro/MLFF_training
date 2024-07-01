@@ -295,17 +295,15 @@ def inference(atoms_list, opt_atoms_list, model_path=None, mace_flag=None, mlff_
     df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag,mlff_opt=mlff_opt,calc_correlation=calc_correlation)
     return(df)
 #Plots the mean absolute error of the energies for each model
+import matplotlib.pyplot as plt
+
 def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     chgnet_MAE = []
-    chgnet_opt_MAE = []
-    
+
     # Calculate mean absolute errors (MAEs) for each dataframe
     for df in dataframes: 
         chgnet_error = df['ΔE'].abs().mean()
         chgnet_MAE.append(chgnet_error)
-        
-        chgnet_opt_error = df['Opt ΔΔE'].abs().mean()
-        chgnet_opt_MAE.append(chgnet_opt_error)
     
     # Create the bar graph
     x = range(len(dataframes))  # X-axis positions for each dataframe
@@ -315,18 +313,16 @@ def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
     
     # Plot CHGnet MAEs
     ax.bar(x, chgnet_MAE, width, label='CHGnet MAE')
-    
-    # Plot optimized CHGnet MAEs with an offset to avoid overlapping
-    ax.bar([p + width for p in x], chgnet_opt_MAE, width, label='Optimized CHGnet MAE')
 
     # Add labels, title, and legend
     ax.set_xlabel('Models')
     ax.set_ylabel('Mean Absolute Error (eV)')
     ax.set_title('Comparison of Mean Absolute Errors')
-    ax.set_xticks([p + width/2 for p in x])
-    ax.set_xticklabels(dataframe_names,rotation=90)
+    ax.set_xticks(x)
+    ax.set_xticklabels(dataframe_names, rotation=90)
     ax.legend()
     plt.show()
+
 #Creates bar graph of MSE of Forces of each model
 def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
     chgnet_MSE = []
