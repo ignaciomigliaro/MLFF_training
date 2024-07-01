@@ -277,8 +277,8 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
     # Calculate Spearman rank correlation for each group of `natom`
     if calc_correlation:
         # Calculate Spearman rank correlation for all structures
-        df['DFT Rank'] = df['DFT E'].rank(ascending=True, method='min').astype(int)
-        df['MLFF Rank'] = df['MLFF E'].rank(ascending=True, method='min').astype(int)
+        df['DFT Rank'] = df['DFT E'].rank(ascending=True, method='dense').astype(int)
+        df['MLFF Rank'] = df['MLFF E'].rank(ascending=True, method='dense',numeric_only=True).astype(int)
         correlation, _ = pearsonr(df['DFT Rank'], df['MLFF Rank'])
         df['Rank ρ'] = correlation
     else:
