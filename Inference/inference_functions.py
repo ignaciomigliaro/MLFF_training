@@ -38,7 +38,7 @@ from scipy import stats
 
 
 #Parse DFT data
-def read_dft(filepath):
+def read_dft(filepath,mlff_opt=False):
     """This function reads the DFT files from the given Directory, groups the files by the number of Atoms."""
     atoms_list = []
     opt_atoms_list = []
@@ -47,6 +47,9 @@ def read_dft(filepath):
     with tqdm(total=total_iterations, desc='Processing') as pbar:
         for i in os.listdir(filepath):
             if os.path.isdir(filepath+i):
+                if mlff_opt == True:
+                    tote = filepath + i + '/log.tote'
+                    mlff_opt_energy = parse_tote(tote)
                 OUTCAR = filepath + i + '/OUTCAR'
                 try:
                     single_file_atom = read(OUTCAR, format='vasp-out', index=':')
@@ -56,6 +59,8 @@ def read_dft(filepath):
                     last_energy.info['file'] = filepath + i 
                     atom.info['step'] = 'first step'
                     last_energy.info['step'] = 'last step'
+                    if mlff_opt_energy:
+                        atom.info['mlff_opt_energy'] = mlff_opt_energy
                     if atom is not None and last_energy is not None:
                         atoms_list.append(atom)
                         opt_atoms_list.append(last_energy)     
@@ -66,7 +71,17 @@ def read_dft(filepath):
                 finally:
                     pbar.update(1)
     return(atoms_list,opt_atoms_list)
-#Create an atoms object with no energy value
+
+def parse_tote(work_path):
+    try:
+        with open(work_path) as f:
+            lines = f.readlines()
+        energy = float(lines[-1].split()[0])
+    except Exception as e: 
+         energy = np.nan
+         print(e)
+    return energy   
+    
 def create_empty_atom(atom):
     empty_atom = Atoms(numbers=atom.get_atomic_numbers(), positions=atom.get_positions(),cell=atom.get_cell())
     return empty_atom
@@ -183,8 +198,9 @@ def print_sorted_energies(grouped_atoms_sorted,mace_flag=None):
 #calculates MSE of forces
 def mean_square_error(true_forces, predicted_forces):
     return np.mean((true_forces - predicted_forces) ** 2)
+
 #Gets the sorted atoms, and creates a Dataframe with multiple properties.
-def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
+def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt = None):
     """Returns a DataFrame with the total energy, CHGnet energy, MACE energy (optional), their differences, and the MSE of the forces for each atom in each group in the sorted dictionary."""
     data = []
 
@@ -195,7 +211,7 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
             chgnet_energy = atom.info.get('chgnet_energy', 'Chgnet energy not available')
             dft_diff = atom.info.get('opt_e_diff')
             basename = os.path.basename(file_path)
-
+            mlff_opt_energy = atom.info['mlff_opt_energy']
             # Calculate the differences
             chgnet_delta_E = None
             mace_delta_E = None
@@ -231,24 +247,26 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
 
                 data.append({
                     'File': basename,
-                    'DFT E': round(total_energy, 3),
-                    'Opt Δ (DFT)': round(dft_diff, 3),
-                    'MLFF E': round(mace_energy, 3),
-                    'ΔE': round(mace_delta_E, 3),
-                    'Opt ΔE (MLFF)': round(mace_opt_diff, 3),
-                    'Opt ΔΔE': round(mace_opt_delta, 3),
+                    'MLFF_opt_E':mlff_opt_energy,+ 
+                    'DFT E': round(total_energy/num_atoms, 3),
+                    'Opt Δ (DFT)': round(dft_diff/num_atoms, 3),
+                    'MLFF E': round(mace_energy/num_atoms, 3),
+                    'ΔE': round(mace_delta_E/num_atoms, 3),
+                    'Opt ΔE (MLFF)': round(mace_opt_diff/num_atoms, 3),
+                    'Opt ΔΔE': round(mace_opt_delta/num_atoms, 3),
                     'Forces MSE': round(mace_mse, 3) if mace_mse is not None else None,
-                    'natom': num_atoms
+                    'natom': num_atoms,
+                    
                 })
             else:
                 data.append({
                     'File': basename,
-                    'DFT E': round(total_energy, 3),
-                    'Opt Δ (DFT)': round(dft_diff, 3),
-                    'MLFF E': round(chgnet_energy, 3),
-                    'ΔE': round(chgnet_delta_E, 3),
-                    'Opt ΔE (MLFF)': round(chgnet_opt_diff, 3),
-                    'Opt ΔΔE': round(chgnet_opt_delta, 3),
+                    'DFT E': round(total_energy/num_atoms, 3),
+                    'Opt Δ (DFT)': round(dft_diff/num_atoms, 3),
+                    'MLFF E': round(chgnet_energy/num_atoms, 3),
+                    'ΔE': round(chgnet_delta_E/num_atoms, 3),
+                    'Opt ΔE (MLFF)': round(chgnet_opt_diff/num_atoms, 3),
+                    'Opt ΔΔE': round(chgnet_opt_delta/num_atoms, 3),
                     'Forces MSE': round(chgnet_mse, 3) if chgnet_mse is not None else None,
                     'natom': num_atoms
                 })
@@ -272,7 +290,7 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None):
 
     return df
 #Calls all inference functions and calculates energies for all of the test set
-def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None):
+def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None,mlff_opt = None):
     if mace_flag:
         print('Running MACE')
         atoms_list = mace_inference(atoms_list,model_path)
@@ -288,7 +306,7 @@ def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None):
     grouped_atoms = group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list)
     grouped_atoms_sorted = rank_atoms_by_energy(grouped_atoms)
     #Create dataframe
-    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag)
+    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag,mlff_opt=mlff_opt)
     return(df)
 #Plots the mean absolute error of the energies for each model
 def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
