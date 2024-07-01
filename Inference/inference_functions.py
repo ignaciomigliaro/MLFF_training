@@ -200,7 +200,7 @@ def mean_square_error(true_forces, predicted_forces):
     return np.mean((true_forces - predicted_forces) ** 2)
 
 #Gets the sorted atoms, and creates a Dataframe with multiple properties.
-def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt = None):
+def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt = None,calc_correlation=False):
     """Returns a DataFrame with the total energy, CHGnet energy, MACE energy (optional), their differences, and the MSE of the forces for each atom in each group in the sorted dictionary."""
     data = []
 
@@ -275,23 +275,28 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
     df = pd.DataFrame(data)
     
     # Calculate Spearman rank correlation for each group of `natom`
-    correlations = {}
-    for natom, group in df.groupby('natom'):
-        group['DFT Rank'] = group['DFT E'].rank(ascending=True, method='min').astype(int)
-        group['MLFF Rank'] = group['MLFF E'].rank(ascending=True, method='min').astype(int)
-        correlation, _ = pearsonr(group['DFT Rank'], group['MLFF Rank'])
-        correlations[natom] = correlation
+    if calc_correlation:
+        # Calculate Spearman rank correlation for each group of `natom`
+        correlations = {}
+        for natom, group in df.groupby('natom'):
+            group['DFT Rank'] = group['DFT E'].rank(ascending=True, method='min').astype(int)
+            group['MLFF Rank'] = group['MLFF E'].rank(ascending=True, method='min').astype(int)
+            correlation, _ = pearsonr(group['DFT Rank'], group['MLFF Rank'])
+            correlations[natom] = correlation
+            
+            # Update the original DataFrame with ranks
+            df.loc[group.index, 'DFT Rank'] = group['DFT Rank']
+            df.loc[group.index, 'MLFF Rank'] = group['MLFF Rank']
         
-        # Update the original DataFrame with ranks
-        df.loc[group.index, 'DFT Rank'] = group['DFT Rank']
-        df.loc[group.index, 'MLFF Rank'] = group['MLFF Rank']
-    
-    # Add correlation as a new column with the same value for each row in the group
-    df['Rank ρ'] = df['natom'].map(correlations)
+        # Add correlation as a new column with the same value for each row in the group
+        df['Rank ρ'] = df['natom'].map(correlations)
+    else:
+        df['Rank ρ'] = None
 
     return df
+
 #Calls all inference functions and calculates energies for all of the test set
-def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None,mlff_opt = None):
+def inference(atoms_list, opt_atoms_list, model_path, mace_flag=None, mlff_opt=None, calc_correlation=False):
     if mace_flag:
         print('Running MACE')
         atoms_list = mace_inference(atoms_list,model_path)
@@ -307,7 +312,7 @@ def inference(atoms_list,opt_atoms_list,model_path,mace_flag=None,mlff_opt = Non
     grouped_atoms = group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list)
     grouped_atoms_sorted = rank_atoms_by_energy(grouped_atoms)
     #Create dataframe
-    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag,mlff_opt=mlff_opt)
+    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag,mlff_opt=mlff_opt,calc_correlation=calc_correlation)
     return(df)
 #Plots the mean absolute error of the energies for each model
 def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
