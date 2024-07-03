@@ -135,6 +135,7 @@ def opt_energy_diff(atoms_list,opt_atoms_list):
     "This function is to calculate the energy difference between starting energy and final from optimization"
     for atom, opt_atom in zip(atoms_list,opt_atoms_list):
             e_diff= atom.get_total_energy() - opt_atom.get_total_energy()
+            atom.info['opt_e_dft'] = opt_atom.get_total_energy()
             atom.info['opt_e_diff'] = e_diff
 
             if atom.info.get('chgnet_energy') is not None and opt_atom.info.get('chgnet_energy') is not None:
@@ -213,6 +214,7 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
             basename = os.path.basename(file_path)
             if mlff_opt:
                 mlff_opt_energy = atom.info['mlff_opt_energy']
+                opt_e_dft = atom.info['opt_e_dft']
             # Calculate the differences
             chgnet_delta_E = None
             mace_delta_E = None
@@ -221,7 +223,6 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
 
             if isinstance(chgnet_energy, (int, float)):
                 chgnet_delta_E = total_energy - chgnet_energy
-                chgnet_opt_diff = atom.info.get('opt_e_diff_chgnet', 'CHGnet opt energy not available')
                 
                 # Calculate CHGnet force MSE
                 chgnet_forces = atom.info.get('chgnet_forces')
@@ -231,7 +232,6 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
 
             if mace_flag:
                 mace_energy = atom.info.get('mace_energy', 'MACE energy not available')
-                mace_opt_diff = atom.info.get('opt_e_diff_mace', 'MACE opt energy not available')
 
                 if isinstance(mace_energy, (int, float)):
                     mace_delta_E = total_energy - mace_energy 
@@ -242,36 +242,51 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
                     dft_forces = atom.get_forces()
                     mace_mse = mean_square_error(dft_forces, mace_forces)
 
-                data.append({
+                row = {
                     'File': basename,
-                    'DFT E': round(total_energy/num_atoms, 3),
-                    'MLFF E': round(mace_energy/num_atoms, 3),
-                    'ΔE': round(mace_delta_E/num_atoms, 3),
+                    'DFT E': round(total_energy / num_atoms, 3),
+                    'MLFF E': round(mace_energy / num_atoms, 3),
+                    'ΔE': round(mace_delta_E / num_atoms, 3),
                     'DFT Forces': np.mean(dft_forces.flatten()), 
-                    'MLFF Forces':np.mean(mace_forces.flatten()) if mace_forces is not None else None,
+                    'MLFF Forces': np.mean(mace_forces.flatten()) if mace_forces is not None else None,
                     'Forces MSE': round(mace_mse, 3) if mace_mse is not None else None,
                     'natom': num_atoms,
-                    
-                })
+                }
+                if mlff_opt is True:
+                    row['Opt E DFT'] = opt_e_dft/num_atoms
+                    row['MLFF Opt E'] = mlff_opt_energy/num_atoms
+                    row['Opt E Diff'] = opt_e_dft/num_atoms - mlff_opt_energy/num_atoms
+
+                data.append(row)
             else:
-                data.append({
+                row = {
                     'File': basename,
-                    'DFT E': round(total_energy/num_atoms, 3),
-                    'MLFF E': round(chgnet_energy/num_atoms, 3),
-                    'ΔE': round(chgnet_delta_E/num_atoms, 3),
+                    'DFT E': round(total_energy / num_atoms, 3),
+                    'MLFF E': round(chgnet_energy / num_atoms, 3),
+                    'ΔE': round(chgnet_delta_E / num_atoms, 3),
                     'DFT Forces': np.mean(dft_forces.flatten()), 
-                    'MLFF Forces':np.mean(chgnet_forces.flatten()) if chgnet_forces is not None else None,
+                    'MLFF Forces': np.mean(chgnet_forces.flatten()) if chgnet_forces is not None else None,
                     'Forces MSE': round(chgnet_mse, 3) if chgnet_mse is not None else None,
                     'natom': num_atoms
-                })
+                }
+                if mlff_opt is True:
+                    row['Opt E DFT'] = opt_e_dft/num_atoms
+                    row['MLFF Opt E'] = mlff_opt_energy/num_atoms
+                    row['Opt E Diff'] = opt_e_dft/num_atoms - mlff_opt_energy/num_atoms
+
+                data.append(row)
+
 
     df = pd.DataFrame(data)
     
     # Calculate Spearman rank correlation for each group of `natom`
     if calc_correlation:
         # Calculate Spearman rank correlation for all structures
-        df['DFT Rank'] = df['DFT E'].rank(ascending=True, method='dense').astype(int)
-        df['MLFF Rank'] = df['MLFF E'].rank(ascending=True, method='dense',numeric_only=True).astype(int)
+        df['DFT Rank'] = df['DFT E'].rank(ascending=True, method='average').astype(int)
+        if mlff_opt is True:
+            df['MLFF Rank'] = df['MLFF Opt E'].rank(ascending=True, method='average',numeric_only=True).astype(int)
+        else: 
+            df['MLFF Rank'] = df['MLFF E'].rank(ascending=True, method='average',numeric_only=True).astype(int)
         correlation, _ = pearsonr(df['DFT Rank'], df['MLFF Rank'])
     return df
 
