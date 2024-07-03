@@ -3,9 +3,13 @@ import sys
 from chgnet.model import CHGNet
 from chgnet.trainer import Trainer
 from chgnet.data.dataset import StructureData, get_train_val_test_loader
+from datetime import datetime
+
+import os 
 
 pickle_file = sys.argv[1]
-chgnet = CHGNet.load()
+
+chgnet = CHGNet.load(check_cuda_mem = False)
 
 
 def open_pickle(pickle_file):
@@ -51,19 +55,33 @@ def trainer_func():
         targets="efs",
         energy_loss_ratio=1,
         force_loss_ratio=1,
-        stress_loss_ratio=0.1,
+        stress_loss_ratio=1,
         optimizer="Adam",
         weight_decay=0,
         scheduler="CosLR",
         criterion="Huber",
         delta=0.1,
-        epochs=50,
+        epochs=100,
         starting_epoch=0,
-        learning_rate=1e-3,
-        use_device="cpu",
+        learning_rate=5e-3,
+        use_device="cuda",
+        check_cuda_mem = False,
         print_freq=100,
     )
         return(trainer)
+
+def generate_unique_dir_path(base_name):
+    # Get the current working directory
+    working_dir = os.getcwd()
+    # Combine the working directory with the base directory name
+    base = base_name.split('.')[0]
+    # Get the current date and time
+    now = datetime.now()
+    # Format the directory name with year, month, day, hour, minute, and second
+    dir_name = now.strftime("%Y-%m-%d-%H-%M-%S")
+    # Create the full path with base path and the formatted directory name
+    full_path = working_dir + '/' + base + '-' + dir_name
+    return full_path
 
 def main():
     dataset_dict=open_pickle(pickle_file)
@@ -74,7 +92,9 @@ def main():
     )
     freeze_layers()
     trainer = trainer_func()
-    trainer.train(train_loader,val_loader,test_loader)
+    save_dir = generate_unique_dir_path(pickle_file)
+    print(save_dir)
+    trainer.train(train_loader,val_loader,test_loader,save_dir=save_dir)
 
 
 if __name__ == '__main__':
