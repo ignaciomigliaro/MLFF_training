@@ -8,6 +8,7 @@ from datetime import datetime
 import os 
 
 pickle_file = sys.argv[1]
+base_directory = sys.argv[2]
 
 chgnet = CHGNet.load(check_cuda_mem = False)
 
@@ -61,7 +62,7 @@ def trainer_func():
         scheduler="CosLR",
         criterion="Huber",
         delta=0.1,
-        epochs=100,
+        epochs=30,
         starting_epoch=0,
         learning_rate=5e-3,
         use_device="cuda",
@@ -70,18 +71,17 @@ def trainer_func():
     )
         return(trainer)
 
-def generate_unique_dir_path(base_name):
-    # Get the current working directory
-    working_dir = os.getcwd()
-    # Combine the working directory with the base directory name
-    base = base_name.split('.')[0]
+def generate_unique_dir_path(base_name, base_directory):
+    # Extract the base name without extension
+    base = os.path.basename(base_name).split('.')[0]
     # Get the current date and time
     now = datetime.now()
     # Format the directory name with year, month, day, hour, minute, and second
     dir_name = now.strftime("%Y-%m-%d-%H-%M-%S")
-    # Create the full path with base path and the formatted directory name
-    full_path = working_dir + '/' + base + '-' + dir_name
+    # Create the full path with base directory, base name, and formatted directory name
+    full_path = os.path.join(base_directory, f"{base}-{dir_name}")
     return full_path
+
 
 def main():
     dataset_dict=open_pickle(pickle_file)
@@ -92,8 +92,8 @@ def main():
     )
     freeze_layers()
     trainer = trainer_func()
-    save_dir = generate_unique_dir_path(pickle_file)
-    print(save_dir)
+    save_dir = generate_unique_dir_path(pickle_file,base_directory)
+    print(f"Saving model to the directory {save_dir}")
     trainer.train(train_loader,val_loader,test_loader,save_dir=save_dir)
 
 
