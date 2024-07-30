@@ -240,7 +240,7 @@ def atoms_to_struct(atoms_list):
 
 def properties_to_dict(structures, energies_per_atom, forces, stresses, mag_mom=None):
     data_dict = {
-        'structures': structures,
+        'structure': structures,
         'energies_per_atom': energies_per_atom,
         'forces': forces,
         'stresses': stresses
