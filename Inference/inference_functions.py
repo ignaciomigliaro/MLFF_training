@@ -692,3 +692,76 @@ def energy_variance(filepath, model1, model2, model3):
                     load_and_predict(model3, structure)
                 ]
     return energies,np.std(energies)
+
+def compare_forces(atoms_list):
+    # Initialize lists to store the differences and statistics
+    diffs_per_system = []
+    mae_per_system = []
+    rmse_per_system = []
+    diffs_x = []
+    diffs_y = []
+    diffs_z = []
+
+    # Perform MLFF inference for all systems in atoms_list
+    mlff_results = ifs.chgnet_inference(atoms_list)
+
+    # Iterate over all systems in atoms_list
+    for idx, atoms in enumerate(atoms_list):
+        # Get DFT forces
+        dft_forces = atoms.get_forces()
+        
+        # Get MLFF forces from the inference results
+        mlff_forces = mlff_results[idx].info['chgnet_forces']
+        
+        # Ensure the forces are in the correct shape
+        dft_forces = np.array(dft_forces)
+        mlff_forces = np.array(mlff_forces)
+        
+        # Ensure the matrices are of the same shape
+        assert dft_forces.shape == mlff_forces.shape, "Force matrices must have the same shape"
+        
+        # Calculate the difference matrix
+        force_diff = dft_forces - mlff_forces
+        diffs_per_system.append(force_diff)
+        
+        # Calculate the Mean Absolute Error (MAE)
+        mae = np.mean(np.abs(force_diff))
+        mae_per_system.append(mae)
+        
+        # Calculate the Root Mean Square Error (RMSE)
+        rmse = np.sqrt(np.mean(force_diff**2))
+        rmse_per_system.append(rmse)
+        
+        # Collect differences in each direction
+        diffs_x.extend(np.abs(force_diff[:, 0]))
+        diffs_y.extend(np.abs(force_diff[:, 1]))
+        diffs_z.extend(np.abs(force_diff[:, 2]))
+
+    # Print overall statistics
+    print(f"Overall Mean Absolute Error (MAE): {np.mean(mae_per_system):.6f} eV/Å")
+    print(f"Overall Root Mean Square Error (RMSE): {np.mean(rmse_per_system):.6f} eV/Å")
+
+    # Print additional statistics
+    print(f"Overall Mean Absolute Error in x direction: {np.mean(diffs_x):.6f} eV/Å")
+    print(f"Overall Mean Absolute Error in y direction: {np.mean(diffs_y):.6f} eV/Å")
+    print(f"Overall Mean Absolute Error in z direction: {np.mean(diffs_z):.6f} eV/Å")
+
+    # Plotting the results
+    plt.figure(figsize=(10, 6))
+
+    # Histogram of force differences per system
+    diffs_per_atom_all = np.concatenate([np.linalg.norm(diff, axis=1) for diff in diffs_per_system])
+    plt.hist(diffs_per_atom_all, bins=30, alpha=0.7, label='Per Atom')
+
+    # KDE plot for force differences in each direction
+    sns.kdeplot(diffs_x, shade=True, label='X Direction')
+    sns.kdeplot(diffs_y, shade=True, label='Y Direction')
+    sns.kdeplot(diffs_z, shade=True, label='Z Direction')
+
+    # Formatting the plot
+    plt.xlabel('Force Difference (eV/Å)')
+    plt.ylabel('Density')
+    plt.title('Distribution of Force Differences between DFT and MLFF across All Systems')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
