@@ -257,13 +257,13 @@ def write_pickle(dataset_dict,output):
      with open(output, "wb") as f:
         pickle.dump(dataset_dict, f)
 
-def prepare_data(output, atoms_list, energies_per_atom, forces, stresses, mag_mom=None):
+def prepare_data(output, atoms_list, energies_per_atom, forces, stresses,relaxed_energies_per_atom, mag_mom=None):
     structures = atoms_to_struct(atoms_list)
     
     if mag_mom is not None:
-        dataset_dict = properties_to_dict(structures, energies_per_atom, forces, stresses, mag_mom)
+        dataset_dict = properties_to_dict(structures, energies_per_atom, forces, stresses,relaxed_energies_per_atom,mag_mom)
     else:
-        dataset_dict = properties_to_dict(structures, energies_per_atom, forces, stresses)
+        dataset_dict = properties_to_dict(structures, energies_per_atom, forces,stresses,relaxed_energies_per_atom)
     
     write_pickle(dataset_dict, output)
     print(f"Total number of structures parsed {len(energies_per_atom)}")
