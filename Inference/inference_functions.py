@@ -753,11 +753,6 @@ def compare_forces(atoms_list):
     diffs_per_atom_all = np.concatenate([np.linalg.norm(diff, axis=1) for diff in diffs_per_system])
     plt.hist(diffs_per_atom_all, bins=30, alpha=0.7, label='Per Atom')
 
-    # KDE plot for force differences in each direction
-    sns.kdeplot(diffs_x, shade=True, label='X Direction')
-    sns.kdeplot(diffs_y, shade=True, label='Y Direction')
-    sns.kdeplot(diffs_z, shade=True, label='Z Direction')
-
     # Formatting the plot
     plt.xlabel('Force Difference (eV/Å)')
     plt.ylabel('Density')
