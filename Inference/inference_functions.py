@@ -703,7 +703,7 @@ def compare_forces(atoms_list):
     diffs_z = []
 
     # Perform MLFF inference for all systems in atoms_list
-    mlff_results = chgnet_inference(atoms_list)
+    #mlff_results = chgnet_inference(atoms_list,model)
 
     # Iterate over all systems in atoms_list
     for idx, atoms in enumerate(atoms_list):
@@ -711,7 +711,7 @@ def compare_forces(atoms_list):
         dft_forces = atoms.get_forces()
         
         # Get MLFF forces from the inference results
-        mlff_forces = mlff_results[idx].info['chgnet_forces']
+        mlff_forces = atoms.info['chgnet_forces']
         
         # Ensure the forces are in the correct shape
         dft_forces = np.array(dft_forces)
