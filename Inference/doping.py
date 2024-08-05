@@ -76,7 +76,7 @@ def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, n
     # Write each doped structure to a new POSCAR file in its own directory
     for i, doped_structure in enumerate(doped_structures):
         # Create a directory for each structure
-        structure_dir = os.path.join(output_dir, f"structure_{i+1}")
+        structure_dir = os.path.join(output_dir, f"structure_{num_dopants}_dopes_{i+1}")
         os.makedirs(structure_dir, exist_ok=True)
         
         # Write the POSCAR file inside the new directory
