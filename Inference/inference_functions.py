@@ -153,11 +153,6 @@ def group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list):
     
     # Check if all atoms objects have the same atomic symbols
     reference_symbols = set(atoms_list[0].get_chemical_symbols())
-    for atoms, opt_atoms in zip(atoms_list, opt_atoms_list):
-        if set(atoms.get_chemical_symbols()) != reference_symbols or \
-                set(opt_atoms.get_chemical_symbols()) != reference_symbols:
-            raise ValueError("Not all atoms objects have the same atomic symbols")
-    
     # Create dictionaries to hold lists of Atoms objects grouped by number of atoms
     grouped_atoms = {}
     
