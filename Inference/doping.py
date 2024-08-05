@@ -4,6 +4,7 @@ from itertools import combinations
 import random
 import os
 import argparse
+import itertools
 
 def introduce_dopant(structure, original_type, dopant, num_dopants, num_structures):
     """
@@ -16,8 +17,8 @@ def introduce_dopant(structure, original_type, dopant, num_dopants, num_structur
     num_dopants (int): The number of atoms to replace with the dopant.
     num_structures (int): The number of doped structures to generate.
 
-    Returns:
-    list of ase.Atoms: The modified structures with the dopant atom.
+    Yields:
+    ase.Atoms: The modified structure with the dopant atom.
     """
     # Get the indices of the atoms to be replaced
     indices_to_replace = [i for i, symbol in enumerate(structure.get_chemical_symbols()) if symbol == original_type]
@@ -27,18 +28,19 @@ def introduce_dopant(structure, original_type, dopant, num_dopants, num_structur
         raise ValueError(f"Number of dopants ({num_dopants}) exceeds available positions ({len(indices_to_replace)})")
 
     # Generate all combinations of indices for doping
-    all_combinations = list(combinations(indices_to_replace, num_dopants))
-    
+    all_combinations = itertools.combinations(indices_to_replace, num_dopants)
+
     # If the number of requested structures exceeds the number of possible combinations, inform the user
-    if num_structures > len(all_combinations):
-        print(f"Requested number of structures ({num_structures}) exceeds the number of possible unique combinations ({len(all_combinations)}).")
-        num_structures = len(all_combinations)
+    total_combinations = sum(1 for _ in all_combinations)
+    if num_structures > total_combinations:
+        print(f"Requested number of structures ({num_structures}) exceeds the number of possible unique combinations ({total_combinations}).")
+        num_structures = total_combinations
+
+    # Recreate the combinations iterator
+    all_combinations = itertools.combinations(indices_to_replace, num_dopants)
 
     # Randomly sample the specified number of structures from all possible combinations
-    sampled_combinations = random.sample(all_combinations, num_structures)
-    
-    # Create a list to store the doped structures
-    doped_structures = []
+    sampled_combinations = random.sample(list(all_combinations), num_structures)
     
     for indices in sampled_combinations:
         # Create a copy of the structure
@@ -48,9 +50,7 @@ def introduce_dopant(structure, original_type, dopant, num_dopants, num_structur
         for index in indices:
             new_symbols[index] = dopant
         doped_structure.set_chemical_symbols(new_symbols)
-        doped_structures.append(doped_structure)
-    
-    return doped_structures
+        yield doped_structure
 
 def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, num_structures, output_dir):
     """
@@ -67,14 +67,11 @@ def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, n
     # Read the original structure from the POSCAR file
     structure = read(poscar_file, format='vasp')
     
-    # Generate doped structures
-    doped_structures = introduce_dopant(structure, original_type, dopant, num_dopants, num_structures)
-    
     # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
     
-    # Write each doped structure to a new POSCAR file in its own directory
-    for i, doped_structure in enumerate(doped_structures):
+    # Generate and write each doped structure to a new POSCAR file in its own directory
+    for i, doped_structure in enumerate(introduce_dopant(structure, original_type, dopant, num_dopants, num_structures)):
         # Create a directory for each structure
         structure_dir = os.path.join(output_dir, f"structure_{num_dopants}_dopes_{i+1}")
         os.makedirs(structure_dir, exist_ok=True)
