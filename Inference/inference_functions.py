@@ -307,7 +307,7 @@ def inference(atoms_list, opt_atoms_list, model_path=None, mace_flag=None, mlff_
 #Plots the mean absolute error of the energies for each model
 import matplotlib.pyplot as plt
 
-def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
+def plot_mae_comparison(dataframes, dataframe_names, savefig=None):
     chgnet_MAE = []
 
     # Calculate mean absolute errors (MAEs) for each dataframe
@@ -326,15 +326,16 @@ def plot_mae_comparison(dataframes, dataframe_names, mace_flag=None):
 
     # Add labels, title, and legend
     ax.set_xlabel('Models')
-    ax.set_ylabel('Mean Absolute Error (eV)')
+    ax.set_ylabel('Mean Absolute Error Energy (eV)')
     ax.set_title('Comparison of Mean Absolute Errors')
     ax.set_xticks(x)
     ax.set_xticklabels(dataframe_names, rotation=90)
     ax.legend()
     plt.show()
-
+    if savefig:
+        plt.savefig(savefig,dpi=600,bbox_inches='tight')
 #Creates bar graph of MSE of Forces of each model
-def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
+def plot_mse_comparison(dataframes, dataframe_names, savefig=None):
     chgnet_MSE = []
     
     # Calculate mean squared errors (MSEs) for each dataframe
@@ -344,23 +345,23 @@ def plot_mse_comparison(dataframes, dataframe_names, mace_flag=None):
     
     # Create the bar graph
     x = range(len(dataframes))  # X-axis positions for each dataframe
-    width = 0.55  # Width of the bars
+    width = 0.95  # Width of the bars
 
     fig, ax = plt.subplots()
     
     # Plot CHGnet MSEs
-    ax.bar(x, chgnet_MSE, width, label='CHGnet Force MSE')
+    ax.bar(x, chgnet_MSE, width, label='CHGnet Force MSE',color='black')
 
     # Add labels, title, and legend
     ax.set_xlabel('Models')
-    ax.set_ylabel('Mean Squared Error (eV/Å^2)')
-    ax.set_title('Comparison of Mean Squared Errors for Forces')
+    ax.set_ylabel('Mean Squared Error Forces (eV/Å^2)')
     ax.set_xticks(x)
     ax.set_xticklabels(dataframe_names, rotation=90)
     ax.legend()
-
+    if savefig:
+        plt.savefig(savefig,dpi=600,bbox_inches='tight')
     plt.tight_layout()  # Adjust layout to make room for the rotated labels
-    plt.show()    
+
 #Createas a bar graph for the Rank correlation of each of the models
 def plot_rank_correlation(data_dicts,dataframe_names):
     dataframes = []
