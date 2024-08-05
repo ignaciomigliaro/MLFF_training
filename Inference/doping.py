@@ -80,7 +80,7 @@ def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, n
         os.makedirs(structure_dir, exist_ok=True)
         
         # Write the POSCAR file inside the new directory
-        output_file = os.path.join(structure_dir, "POSCAR.vasp")
+        output_file = os.path.join(structure_dir, "POSCAR")
         write(output_file, doped_structure, format='vasp', sort=True)
         print(f"Created {output_file}")
 
