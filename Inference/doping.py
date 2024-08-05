@@ -1,23 +1,21 @@
 import numpy as np
 from ase.io import read, write
-from itertools import combinations, islice
 import random
 import os
 import argparse
 
-def introduce_dopant(structure, original_type, dopant, num_dopants, num_structures, output_dir):
+def generate_doped_structure(structure, original_type, dopant, num_dopants, existing_configurations):
     """
-    Introduce a specified number of dopants in place of the original atom type.
+    Generate a single unique doped structure by randomly replacing specified number of atoms.
 
     Parameters:
     structure (ase.Atoms): The original atomic structure.
     original_type (str): The type of atom to be replaced.
     dopant (str): The type of dopant atom to introduce.
     num_dopants (int): The number of atoms to replace with the dopant.
-    num_structures (int): The number of doped structures to generate.
-    output_dir (str): Directory to save the new POSCAR files.
+    existing_configurations (set): A set of already generated configurations to avoid duplicates.
 
-    Yields:
+    Returns:
     ase.Atoms: The modified structure with the dopant atom.
     """
     # Get the indices of the atoms to be replaced
@@ -27,24 +25,22 @@ def introduce_dopant(structure, original_type, dopant, num_dopants, num_structur
     if num_dopants > len(indices_to_replace):
         raise ValueError(f"Number of dopants ({num_dopants}) exceeds available positions ({len(indices_to_replace)})")
 
-    # Generate a random subset of unique combinations of indices for doping
-    for i, indices in enumerate(random.sample(list(combinations(indices_to_replace, num_dopants)), num_structures)):
-        # Create a copy of the structure
-        doped_structure = structure.copy()
-        # Replace the atoms at the indices with the dopant
-        new_symbols = list(doped_structure.get_chemical_symbols())
-        for index in indices:
-            new_symbols[index] = dopant
-        doped_structure.set_chemical_symbols(new_symbols)
-
-        # Create a directory for each structure
-        structure_dir = os.path.join(output_dir, f"structure_{num_dopants}_dopes_{i+1}")
-        os.makedirs(structure_dir, exist_ok=True)
-
-        # Write the POSCAR file inside the new directory
-        output_file = os.path.join(structure_dir, "POSCAR")
-        write(output_file, doped_structure, format='vasp', sort=True)
-        print(f"Created {output_file}")
+    # Randomly select unique indices for doping until a new unique configuration is found
+    while True:
+        selected_indices = tuple(sorted(random.sample(indices_to_replace, num_dopants)))
+        if selected_indices not in existing_configurations:
+            existing_configurations.add(selected_indices)
+            break
+    
+    # Create a copy of the structure
+    doped_structure = structure.copy()
+    # Replace the atoms at the selected indices with the dopant
+    new_symbols = list(doped_structure.get_chemical_symbols())
+    for index in selected_indices:
+        new_symbols[index] = dopant
+    doped_structure.set_chemical_symbols(new_symbols)
+    
+    return doped_structure
 
 def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, num_structures, output_dir):
     """
@@ -64,8 +60,22 @@ def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, n
     # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
     
-    # Introduce dopants and write the structures to files
-    introduce_dopant(structure, original_type, dopant, num_dopants, num_structures, output_dir)
+    # Track already generated configurations to avoid duplicates
+    existing_configurations = set()
+    
+    # Generate and write each doped structure to a new POSCAR file in its own directory
+    for i in range(num_structures):
+        # Generate a unique doped structure
+        doped_structure = generate_doped_structure(structure, original_type, dopant, num_dopants, existing_configurations)
+        
+        # Create a directory for each structure
+        structure_dir = os.path.join(output_dir, f"structure_{num_dopants}_dopes_{i+1}")
+        os.makedirs(structure_dir, exist_ok=True)
+        
+        # Write the POSCAR file inside the new directory
+        output_file = os.path.join(structure_dir, "POSCAR")
+        write(output_file, doped_structure, format='vasp', sort=True)
+        print(f"Created {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate doped structures by replacing atoms in a POSCAR file.')
