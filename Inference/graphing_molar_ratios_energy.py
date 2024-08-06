@@ -23,18 +23,20 @@ def parse_energy_values(base_dir):
 def plot_energies(energies):
     x_values = [x / 32 for x in range(len(energies))]  # Convert to molar fraction
     y_values = [e for e in energies if e is not None]
+
+    # Defect formation energy for carbon
+    carbon_defect_energy = -9.2275
     
-    # Set pure NbO energy (x=0) as reference
-    nb_o_energy = y_values[0] if y_values else 0
-    y_values_relative = [e - nb_o_energy for e in y_values]
+    # Calculate defect formation energies relative to the carbon defect energy
+    y_values_defect_formation = [e - carbon_defect_energy for e in y_values]
     
     valid_x_values = [x_values[i] for i in range(len(energies)) if energies[i] is not None]
 
     plt.figure(figsize=(10, 6))
-    plt.plot(valid_x_values, y_values_relative, marker='o')
-    plt.title('Relative Normalized Energy vs. Molar Fraction of Carbon Atoms Doped')
+    plt.plot(valid_x_values, y_values_defect_formation, marker='o')
+    plt.title('Defect Formation Energy vs. Molar Fraction of Carbon Atoms Doped')
     plt.xlabel('Molar Fraction of Carbon Atoms Doped')
-    plt.ylabel('Relative Energy per Atom (eV)')
+    plt.ylabel('Defect Formation Energy (eV)')
     
     # Set x-ticks with custom labels
     tick_positions = [i / 32 for i in range(33)]
