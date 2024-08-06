@@ -357,7 +357,6 @@ def plot_mse_comparison(dataframes, dataframe_names, savefig=None):
     ax.set_ylabel('Mean Squared Error Forces (eV/Å^2)')
     ax.set_xticks(x)
     ax.set_xticklabels(dataframe_names, rotation=90)
-    ax.legend()
     if savefig:
         plt.savefig(savefig,dpi=600,bbox_inches='tight')
     plt.tight_layout()  # Adjust layout to make room for the rotated labels
