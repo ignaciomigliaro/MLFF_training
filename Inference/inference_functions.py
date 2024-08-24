@@ -56,6 +56,8 @@ def read_dft(filepath,mlff_opt=False):
                         scf_steps.info['mlff_opt_energy'] = mlff_opt_energy
                     if scf_steps is not None:
                         atoms_list.append(scf_steps)
+                        for atom in atoms_list: 
+                            atom.info['filepath'] = filepath + i
                 except Exception as e:
                     print(f"Error reading file: {OUTCAR}")
                     print(f"Error details: {e}")
@@ -77,86 +79,98 @@ def parse_tote(work_path):
 def create_empty_atom(atom):
     empty_atom = Atoms(numbers=atom.get_atomic_numbers(), positions=atom.get_positions(),cell=atom.get_cell())
     return empty_atom
+
 #Create a list of atoms objects with no energy (needed for running inference with MLFF)
 def create_empty_atom_list(atoms_list):
-    no_energy_atoms = []
-    for atom in atoms_list: 
-        empty_atom = create_empty_atom(atom)
-        no_energy_atoms.append(empty_atom)
-    return no_energy_atoms
+    no_energy_atoms_list = []
+    for atom_sublist in atoms_list:  # Iterate over each sublist
+        sublist_no_energy_atoms = []
+        for atom in atom_sublist:  # Iterate over each atom in the sublist
+            empty_atom = create_empty_atom(atom)
+            sublist_no_energy_atoms.append(empty_atom)
+        no_energy_atoms_list.append(sublist_no_energy_atoms)  # Append the processed sublist
+    return no_energy_atoms_list
+
 #Run inference using MACE MLFF
-def mace_inference(atoms_list,model_path=None):
-    no_energy_atoms = create_empty_atom_list(atoms_list)
+def mace_inference(atoms_list, model_path=None):
+    no_energy_atoms_list = create_empty_atom_list(atoms_list)
+    
     with open(os.devnull, 'w') as fnull:
         with contextlib.redirect_stdout(fnull):
             if model_path:
                 print('Using model to calculate')
-                calc = MACECalculator(model_paths=model_path,device='cpu')
+                calc = MACECalculator(model_paths=model_path, device='cpu')
             else: 
                 calc = mace_mp(model="large", dispersion=True, device='cpu', verbose=True)
-    for atom, atom_ne in zip(atoms_list, no_energy_atoms):
-        atom_ne.calc = calc
-        e = atom_ne.get_total_energy()
-        f = atom_ne.get_forces()
-        atom.info['mace_energy'] = e
-        atom.info['mace_forces'] = f
+
+    for atom_sublist, no_energy_atom_sublist in zip(atoms_list, no_energy_atoms_list):
+        for atom, atom_ne in zip(atom_sublist, no_energy_atom_sublist):
+            atom_ne.calc = calc
+            e = atom_ne.get_total_energy()
+            f = atom_ne.get_forces()
+            atom.info['mace_energy'] = e
+            atom.info['mace_forces'] = f
+            
     return atoms_list
 #Run inference using Chgnet MLFF
 def chgnet_inference(atoms_list, model_path=None):
-    no_energy_atoms = create_empty_atom_list(atoms_list)
-    for atom, atom_ne in zip(atoms_list, no_energy_atoms):
-        structure = AseAtomsAdaptor().get_structure(atom_ne)
-        with open(os.devnull, 'w') as fnull:
-            with contextlib.redirect_stdout(fnull):
-                if model_path:
-                    loaded_model = CHGNet.from_file(model_path, use_device='cpu', verbose=False)
-                    loaded_model = loaded_model.to(torch.float32)
-                    prediction = loaded_model.predict_structure(structure)
+    no_energy_atoms_list = create_empty_atom_list(atoms_list)
+    
+    for atom_sublist, no_energy_atom_sublist in zip(atoms_list, no_energy_atoms_list):
+        for atom, atom_ne in zip(atom_sublist, no_energy_atom_sublist):
+            structure = AseAtomsAdaptor().get_structure(atom_ne)
+            try:
+                with open(os.devnull, 'w') as fnull:
+                    with contextlib.redirect_stdout(fnull):
+                        if model_path:
+                            loaded_model = CHGNet.from_file(model_path, use_device='cpu', verbose=False)
+                            loaded_model = loaded_model.to(torch.float32)
+                            prediction = loaded_model.predict_structure(structure)
+                        else:
+                            chgnet = CHGNet.load()
+                            prediction = chgnet.predict_structure(structure)
+                
+                total = sum(len(site.species) for site in structure.sites)
+                energy = prediction['e'] * total
+                forces = prediction['f']
+                atom.info['chgnet_energy'] = energy
+                atom.info['chgnet_forces'] = np.array(forces)
+            
+            except ValueError as e:
+                if "isolated atom(s)" in str(e):
+                    print(f"Skipping structure due to isolated atoms: {e}")
                 else:
-                    chgnet = CHGNet.load()
-                    prediction = chgnet.predict_structure(structure)
-        
-        total = sum(len(site.species) for site in structure.sites)
-        energy = prediction['e'] * total
-        forces = prediction['f'] 
-        atom.info['chgnet_energy'] = energy
-        atom.info['chgnet_forces'] = np.array(forces)
+                    print(f"Skipping structure due to an unexpected error: {e}")
+                continue
+    
     return atoms_list
+
+
 #Calculates the energy differences from starting to finished structure
-def opt_energy_diff(atoms_list,opt_atoms_list):
-    "This function is to calculate the energy difference between starting energy and final from optimization"
-    for atom, opt_atom in zip(atoms_list,opt_atoms_list):
-            e_diff= atom.get_total_energy() - opt_atom.get_total_energy()
+def opt_energy_diff(atoms_list):
+    """Calculate the energy difference between starting energy and final optimized energy from the list of lists."""
+    for atom_sublist in atoms_list:
+        # Assume the last atom in the sublist is the optimized atom
+        opt_atom = atom_sublist[-1]
+        
+        # Iterate through the atoms in the sublist, excluding the last one
+        for atom in atom_sublist[:-1]:
+            e_diff = atom.get_total_energy() - opt_atom.get_total_energy()
             atom.info['opt_e_dft'] = opt_atom.get_total_energy()
             atom.info['opt_e_diff'] = e_diff
-
+            
+            # Calculate energy difference for CHGNet if available
             if atom.info.get('chgnet_energy') is not None and opt_atom.info.get('chgnet_energy') is not None:
-                e_diff_chgnet= atom.info.get('chgnet_energy') - opt_atom.info .get('chgnet_energy')
+                e_diff_chgnet = atom.info.get('chgnet_energy') - opt_atom.info.get('chgnet_energy')
                 atom.info['opt_e_diff_chgnet'] = e_diff_chgnet
 
+            # Calculate energy difference for MACE if available
             if atom.info.get('mace_energy') is not None and opt_atom.info.get('mace_energy') is not None:
-                e_diff_mace= atom.info.get('mace_energy') - opt_atom.info .get('mace_energy')
+                e_diff_mace = atom.info.get('mace_energy') - opt_atom.info.get('mace_energy')
                 atom.info['opt_e_diff_mace'] = e_diff_mace
-    return(atoms_list)
-#Groups atoms if they have all the same atomic symbols
-def group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list):
-    if not atoms_list :
-        raise ValueError("The input lists are empty")
-    
-    # Check if all atoms objects have the same atomic symbols
-    reference_symbols = set(atoms_list[0].get_chemical_symbols())
-    # Create dictionaries to hold lists of Atoms objects grouped by number of atoms
-    grouped_atoms = {}
-    
-    # Populate the dictionaries
-    for atoms in atoms_list:
-        num_atoms = len(atoms)
-        if num_atoms not in grouped_atoms:
-            grouped_atoms[num_atoms] = []
-        grouped_atoms[num_atoms].append(atoms)
 
-    
-    return grouped_atoms
+    return atoms_list
+
 #Ranks the atoms by their energy
 def rank_atoms_by_energy(grouped_atoms):
     """Sorts groups of atoms based on the total number of atoms and then sorts the atoms within each group by their total energy."""
