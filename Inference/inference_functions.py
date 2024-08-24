@@ -41,7 +41,6 @@ from scipy import stats
 def read_dft(filepath,mlff_opt=False):
     """This function reads the DFT files from the given Directory, groups the files by the number of Atoms."""
     atoms_list = []
-    opt_atoms_list = []
     n = 0
     total_iterations = len(os.listdir(filepath))
     with tqdm(total=total_iterations, desc='Processing') as pbar:
@@ -52,25 +51,18 @@ def read_dft(filepath,mlff_opt=False):
                     mlff_opt_energy = parse_tote(tote)
                 OUTCAR = filepath + i + '/OUTCAR'
                 try:
-                    single_file_atom = read(OUTCAR, format='vasp-out', index=':')
-                    last_energy = single_file_atom[-1]
-                    atom = single_file_atom[0]
-                    atom.info['file'] = filepath + i
-                    last_energy.info['file'] = filepath + i 
-                    atom.info['step'] = 'first step'
-                    last_energy.info['step'] = 'last step'
+                    scf_steps = read(OUTCAR, format='vasp-out', index=':')                                       
                     if mlff_opt is True:
-                        atom.info['mlff_opt_energy'] = mlff_opt_energy
-                    if atom is not None and last_energy is not None:
-                        atoms_list.append(atom)
-                        opt_atoms_list.append(last_energy)     
+                        scf_steps.info['mlff_opt_energy'] = mlff_opt_energy
+                    if scf_steps is not None:
+                        atoms_list.append(scf_steps)
                 except Exception as e:
                     print(f"Error reading file: {OUTCAR}")
                     print(f"Error details: {e}")
                     continue
                 finally:
                     pbar.update(1)
-    return(atoms_list,opt_atoms_list)
+    return(atoms_list)
 
 def parse_tote(work_path):
     try:
