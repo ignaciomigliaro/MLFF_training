@@ -38,33 +38,44 @@ from scipy import stats
 
 
 #Parse DFT data
-def read_dft(filepath,mlff_opt=False):
+from tqdm import tqdm
+import os
+from ase.io import read
+
+def parse_tote(filepath):
+    # Dummy implementation of parse_tote
+    # Replace this with your actual implementation
+    return 0.0
+
+def read_dft(filepath, mlff_opt=False):
     """This function reads the DFT files from the given Directory, groups the files by the number of Atoms."""
     atoms_list = []
-    n = 0
     total_iterations = len(os.listdir(filepath))
     with tqdm(total=total_iterations, desc='Processing') as pbar:
         for i in os.listdir(filepath):
-            if os.path.isdir(filepath+i):
-                if mlff_opt == True:
-                    tote = filepath + i + '/log.tote'
+            dir_path = os.path.join(filepath, i)
+            if os.path.isdir(dir_path):
+                if mlff_opt:
+                    tote = os.path.join(dir_path, 'log.tote')
                     mlff_opt_energy = parse_tote(tote)
-                OUTCAR = filepath + i + '/OUTCAR'
+                OUTCAR = os.path.join(dir_path, 'OUTCAR')
                 try:
-                    scf_steps = read(OUTCAR, format='vasp-out', index=':')                                       
-                    if mlff_opt is True:
-                        scf_steps.info['mlff_opt_energy'] = mlff_opt_energy
+                    scf_steps = read(OUTCAR, format='vasp-out', index=':')  # Reads the OUTCAR file
+                    
                     if scf_steps is not None:
                         atoms_list.append(scf_steps)
-                        for atom in atoms_list: 
-                            atom.info['filepath'] = filepath + i
+                        for atoms in scf_steps: 
+                            atoms.info['filepath'] = dir_path
+                            if mlff_opt:
+                                atoms.info['mlff_opt_energy'] = mlff_opt_energy
                 except Exception as e:
                     print(f"Error reading file: {OUTCAR}")
                     print(f"Error details: {e}")
                     continue
                 finally:
                     pbar.update(1)
-    return(atoms_list)
+    return atoms_list
+
 
 def parse_tote(work_path):
     try:
@@ -113,6 +124,7 @@ def mace_inference(atoms_list, model_path=None):
             
     return atoms_list
 #Run inference using Chgnet MLFF
+
 def chgnet_inference(atoms_list, model_path=None):
     no_energy_atoms_list = create_empty_atom_list(atoms_list)
     
@@ -133,9 +145,10 @@ def chgnet_inference(atoms_list, model_path=None):
                 total = sum(len(site.species) for site in structure.sites)
                 energy = prediction['e'] * total
                 forces = prediction['f']
+                stress = prediction['s']
                 atom.info['chgnet_energy'] = energy
                 atom.info['chgnet_forces'] = np.array(forces)
-            
+                atom.info['chgnet_stress'] = np.array(stress)
             except ValueError as e:
                 if "isolated atom(s)" in str(e):
                     print(f"Skipping structure due to isolated atoms: {e}")
@@ -202,20 +215,22 @@ def mean_square_error(true_forces, predicted_forces):
     return np.mean((true_forces - predicted_forces) ** 2)
 
 #Gets the sorted atoms, and creates a Dataframe with multiple properties.
-def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt = None,calc_correlation=False):
-    """Returns a DataFrame with the total energy, CHGnet energy, MACE energy (optional), their differences, and the MSE of the forces for each atom in each group in the sorted dictionary."""
+def get_sorted_energies_dataframe(atoms_list, mace_flag=None, mlff_opt=None, calc_correlation=False):
+    """Returns a DataFrame with the total energy, CHGnet energy, MACE energy (optional), their differences, and the MSE of the forces for each atom in each sublist in the list of lists."""
     data = []
 
-    for num_atoms, atoms_list in grouped_atoms_sorted.items():
-        for atom in atoms_list:
+    for atom_sublist in atoms_list:
+        num_atoms = len(atom_sublist)  # Calculate the number of atoms for each sublist
+        for atom in atom_sublist:
             file_path = atom.info.get('file', 'File path not available')
             total_energy = atom.get_total_energy()
             chgnet_energy = atom.info.get('chgnet_energy', 'Chgnet energy not available')
             dft_diff = atom.info.get('opt_e_diff')
             basename = os.path.basename(file_path)
             if mlff_opt:
-                mlff_opt_energy = atom.info['mlff_opt_energy']
-                opt_e_dft = atom.info['opt_e_dft']
+                mlff_opt_energy = atom.info.get('mlff_opt_energy', None)
+                opt_e_dft = atom.info.get('opt_e_dft', None)
+            
             # Calculate the differences
             chgnet_delta_E = None
             mace_delta_E = None
@@ -245,38 +260,35 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
 
                 row = {
                     'File': basename,
-                    'DFT E': round(total_energy / num_atoms, 3),
-                    'MLFF E': round(mace_energy / num_atoms, 3),
-                    'ΔE': round(mace_delta_E / num_atoms, 3),
+                    'DFT E': round(total_energy, 3),
+                    'MLFF E': round(mace_energy, 3),
+                    'ΔE': round(mace_delta_E, 3),
                     'DFT Forces': np.mean(dft_forces.flatten()), 
                     'MLFF Forces': np.mean(mace_forces.flatten()) if mace_forces is not None else None,
                     'Forces MSE': round(mace_mse, 3) if mace_mse is not None else None,
-                    'natom': num_atoms,
                 }
-                if mlff_opt is True:
-                    row['Opt E DFT'] = opt_e_dft/num_atoms
-                    row['MLFF Opt E'] = mlff_opt_energy/num_atoms
-                    row['Opt E Diff'] = opt_e_dft/num_atoms - mlff_opt_energy/num_atoms
+                if mlff_opt:
+                    row['Opt E DFT'] = opt_e_dft
+                    row['MLFF Opt E'] = mlff_opt_energy
+                    row['Opt E Diff'] = opt_e_dft - mlff_opt_energy
 
                 data.append(row)
             else:
                 row = {
                     'File': basename,
-                    'DFT E': round(total_energy / num_atoms, 3),
-                    'MLFF E': round(chgnet_energy / num_atoms, 3),
-                    'ΔE': round(chgnet_delta_E / num_atoms, 3),
+                    'DFT E': round(total_energy, 3),
+                    'MLFF E': round(chgnet_energy, 3),
+                    'ΔE': round(chgnet_delta_E, 3),
                     'DFT Forces': np.mean(dft_forces.flatten()), 
                     'MLFF Forces': np.mean(chgnet_forces.flatten()) if chgnet_forces is not None else None,
                     'Forces MSE': round(chgnet_mse, 3) if chgnet_mse is not None else None,
-                    'natom': num_atoms
                 }
-                if mlff_opt is True:
-                    row['Opt E DFT'] = opt_e_dft/num_atoms
-                    row['MLFF Opt E'] = mlff_opt_energy/num_atoms
-                    row['Opt E Diff'] = opt_e_dft/num_atoms - mlff_opt_energy/num_atoms
+                if mlff_opt:
+                    row['Opt E DFT'] = opt_e_dft
+                    row['MLFF Opt E'] = mlff_opt_energy
+                    row['Opt E Diff'] = opt_e_dft - mlff_opt_energy
 
                 data.append(row)
-
 
     df = pd.DataFrame(data)
     
@@ -284,32 +296,42 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
     if calc_correlation:
         # Calculate Spearman rank correlation for all structures
         df['DFT Rank'] = df['DFT E'].rank(ascending=True, method='average').astype(int)
-        if mlff_opt is True:
-            df['MLFF Rank'] = df['MLFF Opt E'].rank(ascending=True, method='average',numeric_only=True).astype(int)
+        if mlff_opt:
+            df['MLFF Rank'] = df['MLFF Opt E'].rank(ascending=True, method='average', numeric_only=True).astype(int)
         else: 
-            df['MLFF Rank'] = df['MLFF E'].rank(ascending=True, method='average',numeric_only=True).astype(int)
+            df['MLFF Rank'] = df['MLFF E'].rank(ascending=True, method='average', numeric_only=True).astype(int)
         correlation, _ = pearsonr(df['DFT Rank'], df['MLFF Rank'])
+        print(f"Spearman Rank Correlation: {correlation}")
+
     return df
 
 #Calls all inference functions and calculates energies for all of the test set
-def inference(atoms_list, opt_atoms_list, model_path=None, mace_flag=None, mlff_opt=None, calc_correlation=False):
+def inference(atoms_list, model_path=None, mace_flag=None, mlff_opt=None, calc_correlation=False):
+    # Extract optimized atoms from the last element of each sublist
+    opt_atoms_list = [sublist[-1] for sublist in atoms_list]
+
+    # Run inference based on the flag
     if mace_flag:
         print('Running MACE')
-        atoms_list = mace_inference(atoms_list,model_path)
-        opt_atoms_list = mace_inference(opt_atoms_list,model_path)
+        atoms_list = mace_inference(atoms_list, model_path)
+        opt_atoms_list = mace_inference([[opt_atoms] for opt_atoms in opt_atoms_list], model_path)
     else:
-        print('Running CHgnet')
-        #Run CHGNet inference
-        atoms_list = chgnet_inference(atoms_list,model_path)
-        opt_atoms_list = chgnet_inference(opt_atoms_list,model_path)
-    #Find difference in atoms
-    atoms_list = opt_energy_diff(atoms_list,opt_atoms_list)
-    #Group and sort atoms by natoms
-    grouped_atoms = group_atoms_by_number_if_same_symbols(atoms_list,opt_atoms_list)
-    grouped_atoms_sorted = rank_atoms_by_energy(grouped_atoms)
-    #Create dataframe
-    df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag,mlff_opt=mlff_opt,calc_correlation=calc_correlation)
-    return(df)
+        print('Running CHGNet')
+        atoms_list = chgnet_inference(atoms_list, model_path)
+        opt_atoms_list = chgnet_inference([[opt_atoms] for opt_atoms in opt_atoms_list], model_path)
+
+    # Find difference in atoms
+    atoms_list = opt_energy_diff(atoms_list)
+
+    # Combine atoms_list and opt_atoms_list
+    combined_atoms_list = [sublist + [opt_atoms] for sublist, opt_atoms in zip(atoms_list, opt_atoms_list)]
+    
+    # Create dataframe
+    df = get_sorted_energies_dataframe(atoms_list, mace_flag=mace_flag, mlff_opt=mlff_opt, calc_correlation=calc_correlation)
+    
+    return df
+
+
 #Plots the mean absolute error of the energies for each model
 import matplotlib.pyplot as plt
 
