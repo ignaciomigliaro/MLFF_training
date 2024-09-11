@@ -56,6 +56,12 @@ def parse_args():
          help="If you want to see any error occurring in the parsing process"
 
     )
+    parser.add_argument(
+        '--stepsize',
+        type=int,
+        default=1,  # Default value is 1 so it behaves like before if not provided
+        help="Step size for selecting atoms every nth step (default: 1)"
+    )
     return parser.parse_args()
 
 def parse_vasp_dir(filepath, verbose, stepsize=1):
@@ -298,8 +304,10 @@ def main():
     relax_flag = args.relaxed
     verbose_flag = args.verbose
     mace_flag = args.mace
+    stepsize = args.stepsize  # Capture stepsize from parsed arguments
 
-    atoms_list = parse_vasp_dir(filepath, verbose_flag)
+
+    atoms_list = parse_vasp_dir(filepath, verbose_flag, stepsize=stepsize)
     atoms_list = filter_atoms_list(atoms_list)
     
     # Initial property extraction
