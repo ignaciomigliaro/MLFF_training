@@ -69,7 +69,6 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
     warnings.filterwarnings('ignore')
     atoms_list = []
     len_list = []
-    n = 0
     filename = Path('OUTCAR')
     total_iterations = len(os.listdir(filepath))
 
@@ -84,6 +83,10 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
                 last_energy = last_energy.get_total_energy()
                 all_steps = list(single_file_atom)
                 len_list.append(len(all_steps))
+
+                # Ensure stepsize is within the bounds of the list
+                if stepsize > len(all_steps):
+                    stepsize = len(all_steps)
 
                 # Process only every 'stepsize'-th atom object
                 for idx in range(0, len(all_steps), stepsize):
@@ -102,6 +105,7 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
                 pbar.update(1)
 
     return atoms_list
+
 
 
 def filter_atoms_list(atoms_list):
