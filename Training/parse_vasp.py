@@ -81,16 +81,16 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
                 single_file_atom = read(OUTCAR, format='vasp-out', index=':')
                 last_energy = read(OUTCAR, format='vasp-out')
                 last_energy = last_energy.get_total_energy()
+                
+                # Convert single_file_atom to a list
                 all_steps = list(single_file_atom)
                 len_list.append(len(all_steps))
+                
+                # Sample atoms from all_steps based on stepsize
+                sampled_atoms = all_steps[::stepsize]
 
-                # Ensure stepsize is within the bounds of the list
-                if stepsize > len(all_steps):
-                    stepsize = len(all_steps)
-
-                # Process only every 'stepsize'-th atom object
-                for idx in range(0, len(all_steps), stepsize):
-                    a = all_steps[idx]
+                # Process sampled atoms
+                for a in sampled_atoms:
                     if a.get_total_energy() < 0:
                         a.info['file'] = filepath.joinpath(i)
                         atoms_list.append(a)
@@ -105,6 +105,7 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
                 pbar.update(1)
 
     return atoms_list
+
 
 
 
