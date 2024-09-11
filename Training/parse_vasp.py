@@ -58,39 +58,44 @@ def parse_args():
     )
     return parser.parse_args()
 
-def parse_vasp_dir(filepath,verbose):
+def parse_vasp_dir(filepath, verbose, stepsize=1):
     """This is a function to replace the Chgnet Utils, this is more robust and gives correct energy values"""
-    warnings.filterwarnings('ignore') 
+    warnings.filterwarnings('ignore')
     atoms_list = []
     len_list = []
-    n=0
-    filename=Path('OUTCAR')
+    n = 0
+    filename = Path('OUTCAR')
     total_iterations = len(os.listdir(filepath))
+
     with tqdm(total=total_iterations, desc='Processing') as pbar:
         for i in os.listdir(filepath):
             dir = Path(i)
-            OUTCAR = filepath/i/filename
+            OUTCAR = filepath / i / filename
             try:
-                    single_file_atom = read(OUTCAR,format='vasp-out', index=':')
-                    last_energy = read(OUTCAR,format='vasp-out')
-                    last_energy = last_energy.get_total_energy()
-                    all_steps = list(single_file_atom)
-                    len_list.append(len(all_steps))
-                    for a in single_file_atom:
-                        if a.get_total_energy() < 0:
-                            a.info['file'] = filepath.joinpath(i)
-                            atoms_list.append(a)
-                            e=a.get_total_energy()
-                            a.info['relaxed_energy'] = last_energy 
-            except Exception as e:
-                    if verbose:
-                        print(f"Error reading file: {OUTCAR}")
-                        print(f"Error details: {e}")
-                    continue
-            finally:
-                    pbar.update(1)
+                # Read the entire OUTCAR file
+                single_file_atom = read(OUTCAR, format='vasp-out', index=':')
+                last_energy = read(OUTCAR, format='vasp-out')
+                last_energy = last_energy.get_total_energy()
+                all_steps = list(single_file_atom)
+                len_list.append(len(all_steps))
 
-    return(atoms_list)
+                # Process only every 'stepsize'-th atom object
+                for idx in range(0, len(all_steps), stepsize):
+                    a = all_steps[idx]
+                    if a.get_total_energy() < 0:
+                        a.info['file'] = filepath.joinpath(i)
+                        atoms_list.append(a)
+                        e = a.get_total_energy()
+                        a.info['relaxed_energy'] = last_energy
+            except Exception as e:
+                if verbose:
+                    print(f"Error reading file: {OUTCAR}")
+                    print(f"Error details: {e}")
+                continue
+            finally:
+                pbar.update(1)
+
+    return atoms_list
 
 
 def filter_atoms_list(atoms_list):
