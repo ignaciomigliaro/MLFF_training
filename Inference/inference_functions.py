@@ -47,10 +47,12 @@ def parse_tote(filepath):
     # Replace this with your actual implementation
     return 0.0
 
-def read_dft(filepath, mlff_opt=False):
-    """This function reads the DFT files from the given Directory, groups the files by the number of Atoms."""
-    atoms_list = []
+def read_dft(filepath, mlff_opt=False, stepsize=1):
+    """This function reads the DFT files from the given Directory, groups the files by the number of Atoms, and creates a list of scf_steps for each OUTCAR."""
+    warnings.filterwarnings('ignore')
+    atoms_list = []  # This will store lists of SCF steps
     total_iterations = len(os.listdir(filepath))
+    
     with tqdm(total=total_iterations, desc='Processing') as pbar:
         for i in os.listdir(filepath):
             dir_path = os.path.join(filepath, i)
@@ -59,22 +61,33 @@ def read_dft(filepath, mlff_opt=False):
                     tote = os.path.join(dir_path, 'log.tote')
                     mlff_opt_energy = parse_tote(tote)
                 OUTCAR = os.path.join(dir_path, 'OUTCAR')
+                
                 try:
-                    scf_steps = read(OUTCAR, format='vasp-out', index=':')  # Reads the OUTCAR file
+                    # Read all SCF steps from the OUTCAR
+                    scf_steps = read(OUTCAR, format='vasp-out', index=':')
                     
                     if scf_steps is not None:
-                        atoms_list.append(scf_steps)
-                        for atoms in scf_steps: 
+                        # Sample the SCF steps based on stepsize
+                        sampled_steps = scf_steps[::stepsize]
+                        
+                        # Add the filepath and mlff_opt_energy (if applicable) to each step
+                        for atoms in sampled_steps:
                             atoms.info['filepath'] = dir_path
                             if mlff_opt:
                                 atoms.info['mlff_opt_energy'] = mlff_opt_energy
+                        
+                        # Append the entire list of sampled steps for this OUTCAR to atoms_list
+                        atoms_list.append(sampled_steps)
+                        
                 except Exception as e:
                     print(f"Error reading file: {OUTCAR}")
                     print(f"Error details: {e}")
                     continue
                 finally:
                     pbar.update(1)
+                    
     return atoms_list
+
 
 
 def parse_tote(work_path):
