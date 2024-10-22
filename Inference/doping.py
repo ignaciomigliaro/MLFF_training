@@ -3,7 +3,6 @@ from ase.io import read, write
 import random
 import os
 import argparse
-
 from ase.spacegroup import get_spacegroup
 
 def generate_doped_structure_no_symmetry(structure, original_type, dopant, num_dopants, existing_configurations):
@@ -49,6 +48,7 @@ def generate_doped_structure_no_symmetry(structure, original_type, dopant, num_d
         doped_structure[index].symbol = dopant  # Directly replace the atom's symbol
     
     return doped_structure
+
 
 
 def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, num_structures, output_dir):
