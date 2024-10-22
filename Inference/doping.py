@@ -6,7 +6,7 @@ import argparse
 
 def generate_doped_structure(structure, original_type, dopant, num_dopants, existing_configurations):
     """
-    Generate a single unique doped structure by randomly replacing specified number of atoms.
+    Generate a single unique doped structure by randomly replacing a specified number of atoms.
 
     Parameters:
     structure (ase.Atoms): The original atomic structure.
@@ -31,16 +31,16 @@ def generate_doped_structure(structure, original_type, dopant, num_dopants, exis
         if selected_indices not in existing_configurations:
             existing_configurations.add(selected_indices)
             break
-    
+
     # Create a copy of the structure
     doped_structure = structure.copy()
+    
     # Replace the atoms at the selected indices with the dopant
-    new_symbols = list(doped_structure.get_chemical_symbols())
     for index in selected_indices:
-        new_symbols[index] = dopant
-    doped_structure.set_chemical_symbols(new_symbols)
+        doped_structure[index].symbol = dopant  # Directly replace the atom's symbol
     
     return doped_structure
+
 
 def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, num_structures, output_dir):
     """
