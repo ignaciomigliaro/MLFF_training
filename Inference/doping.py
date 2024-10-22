@@ -31,15 +31,16 @@ def generate_doped_structure(structure, original_type, dopant, num_dopants, exis
         if selected_indices not in existing_configurations:
             existing_configurations.add(selected_indices)
             break
-
+    
     # Create a copy of the structure
     doped_structure = structure.copy()
-    
+
     # Replace the atoms at the selected indices with the dopant
     for index in selected_indices:
-        doped_structure[index].symbol = dopant  # Directly replace the atom's symbol
-    
+        doped_structure[index].symbol = dopant
+
     return doped_structure
+
 
 
 def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, num_structures, output_dir):
