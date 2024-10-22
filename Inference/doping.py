@@ -4,9 +4,12 @@ import random
 import os
 import argparse
 
-def generate_doped_structure(structure, original_type, dopant, num_dopants, existing_configurations):
+from ase.spacegroup import get_spacegroup
+
+def generate_doped_structure_no_symmetry(structure, original_type, dopant, num_dopants, existing_configurations):
     """
-    Generate a single unique doped structure by randomly replacing a specified number of atoms.
+    Generate a single unique doped structure by randomly replacing a specified number of atoms,
+    ensuring that symmetry constraints do not interfere.
 
     Parameters:
     structure (ase.Atoms): The original atomic structure.
@@ -18,8 +21,14 @@ def generate_doped_structure(structure, original_type, dopant, num_dopants, exis
     Returns:
     ase.Atoms: The modified structure with the dopant atom.
     """
+    # Remove symmetry constraints (if any)
+    structure_no_symmetry = structure.copy()
+    structure_no_symmetry.set_pbc((True, True, True))  # Ensure periodic boundary conditions
+    spacegroup = get_spacegroup(structure_no_symmetry)
+    structure_no_symmetry = spacegroup.no_symmetry(structure_no_symmetry)  # Remove symmetry
+    
     # Get the indices of the atoms to be replaced
-    indices_to_replace = [i for i, symbol in enumerate(structure.get_chemical_symbols()) if symbol == original_type]
+    indices_to_replace = [i for i, symbol in enumerate(structure_no_symmetry.get_chemical_symbols()) if symbol == original_type]
 
     # Check if the number of dopants exceeds the available positions
     if num_dopants > len(indices_to_replace):
@@ -33,7 +42,7 @@ def generate_doped_structure(structure, original_type, dopant, num_dopants, exis
             break
 
     # Create a copy of the structure
-    doped_structure = structure.copy()
+    doped_structure = structure_no_symmetry.copy()
     
     # Replace the atoms at the selected indices with the dopant
     for index in selected_indices:
