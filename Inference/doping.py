@@ -51,33 +51,23 @@ def write_qe_file(output_directory, crystal_structure):
     """
     # Quantum Espresso calculation parameters
     input_data = {
-        'control': {
-            'calculation': 'vc-relax',
-            'prefix': 'qe_input',
-            'pseudo_dir': '~/QE/pseudo',
-            'outdir': './out/',
-            'verbosity': 'high',
-        },
-        'system': {
-            'ecutwfc': 90,
-            'ecutrho': 600,
-            'occupations': 'smearing',
-            'smearing': 'cold',
-            'degauss': 1.4699723600e-02,
-            'vdw_corr': 'mbd',
-        },
-        'electrons': {
-            'electron_maxstep': 80,
-            'mixing_beta': 0.4,
-            'etot_conv_thr': 1.0e-03,
-            'forc_conv_thr': 5.0e-02,
-            'tstress': True,
-        },
-        'k_points': {
-            'kspacing': 0.05  # Set k-point spacing
+        "calculation": "vc-relax",
+        "prefix": "qe_input",
+        "pseudo_dir": "~/QE/pseudo",
+        "outdir": "./out/",
+        "verbosity": "high",
+        "etot_conv_thr": 1.0e-03,
+        "forc_conv_thr": 5.0e-02,
+        "tstress": True,
+        "degauss": 1.4699723600e-02,
+        "ecutrho": 600,
+        "ecutwfc": 90,
+        "vdw_corr": "mbd",
+        "occupations": "smearing",
+        "smearing": 'cold',
+        "electron_maxstep": 80,
+        "mixing_beta": 4.0e-01,
         }
-    }
-
     # Pseudopotentials for different elements
     pseudos = {
         'Cl': 'Cl.upf',
@@ -88,6 +78,8 @@ def write_qe_file(output_directory, crystal_structure):
         'La': 'La.upf',
         'Li': 'Li.upf',
         'Zr': 'Zr.upf',
+        'C' : 'C.upf',
+        'H': 'H.upf'
     }
 
     # Use ASE's write function to generate the Quantum Espresso input file
@@ -96,12 +88,14 @@ def write_qe_file(output_directory, crystal_structure):
         images=crystal_structure,
         format='espresso-in',
         input_data=input_data,
-        pseudopotentials=pseudos
+        pseudopotentials=pseudos,
+        kspacing=0.05,
     )
 
-def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, num_structures, output_dir):
+def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, num_structures, output_dir, qe=False):
     """
-    Generate new POSCAR files for each combination where the original atom type is replaced by the dopant.
+    Generate new structures for each combination where the original atom type is replaced by the dopant.
+    Conditionally write either VASP POSCAR files or Quantum Espresso input files.
 
     Parameters:
     poscar_file (str): Path to the original POSCAR file.
@@ -109,7 +103,11 @@ def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, n
     dopant (str): The type of dopant atom to introduce.
     num_dopants (int): The number of dopants to introduce in each structure.
     num_structures (int): The number of doped structures to generate.
-    output_dir (str): Directory to save the new POSCAR files.
+    output_dir (str): Directory to save the new structure files.
+    qe (bool): If True, generate Quantum Espresso input files instead of VASP POSCAR files.
+
+    Returns:
+    list: A list of ASE Atoms objects representing the generated doped structures.
     """
     # Read the original structure from the POSCAR file
     structure = read(poscar_file, format='vasp')
@@ -120,46 +118,58 @@ def generate_doped_structures(poscar_file, original_type, dopant, num_dopants, n
     # Track already generated configurations to avoid duplicates
     existing_configurations = set()
     
-    # Generate and write each doped structure to a new POSCAR file in its own directory
+    # List to store the generated structures
+    generated_structures = []
+    
+    # Generate and write each doped structure
     for i in range(num_structures):
         # Generate a unique doped structure
         doped_structure = generate_doped_structure(structure, original_type, dopant, num_dopants, existing_configurations)
+        
+        # Save the doped structure in the list
+        generated_structures.append(doped_structure)
         
         # Create a directory for each structure
         structure_dir = os.path.join(output_dir, f"structure_{num_dopants}_dopes_{i+1}")
         os.makedirs(structure_dir, exist_ok=True)
         
-        # Write the POSCAR file inside the new directory
-        output_file = os.path.join(structure_dir, "POSCAR")
-        write(output_file, doped_structure, format='vasp', sort=True)
-        print(f"Created {output_file}")
+        if qe:
+            # Write the Quantum Espresso file
+            output_file = os.path.join(structure_dir, "pwscf.in")
+            write_qe_file(output_file, doped_structure)
+            print(f"Created Quantum Espresso input file: {output_file}")
+        else:
+            # Write the VASP POSCAR file
+            output_file = os.path.join(structure_dir, "POSCAR")
+            write(output_file, doped_structure, format='vasp', sort=True)
+            print(f"Created VASP POSCAR file: {output_file}")
+
+    return generated_structures  # Return the list of generated structures
+
+
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate doped structures by replacing atoms in a POSCAR file.')
-    parser.add_argument('poscar_file', type=str, help='Path to the original POSCAR file')
-    parser.add_argument('original_type', type=str, help='The type of atom to be replaced')
-    parser.add_argument('dopant', type=str, help='The type of dopant atom to introduce')
-    parser.add_argument('num_dopants', type=int, help='The number of dopants to introduce')
-    parser.add_argument('num_structures', type=int, help='The number of structures to generate')
-    parser.add_argument('output_dir', type=str, help='Directory to save the new POSCAR files')
+    parser = argparse.ArgumentParser(description="Generate doped structures and optionally write Quantum Espresso input files.")
+    parser.add_argument('poscar_file', type=str, help='Path to the input POSCAR file.')
+    parser.add_argument('original_type', type=str, help='Type of atom to be replaced (e.g., Nb).')
+    parser.add_argument('dopant', type=str, help='Type of dopant atom (e.g., C).')
+    parser.add_argument('num_dopants', type=int, help='Number of dopants to add.')
+    parser.add_argument('num_structures', type=int, help='Number of configurations to generate.')
+    parser.add_argument('output_dir', type=str, help='Output directory for the generated structures.')
     parser.add_argument('--qe', action='store_true', help='Generate a Quantum Espresso input file for each doped structure.')
 
     args = parser.parse_args()
 
-    generated_structures = generate_doped_structures(
+    # Generate doped structures with the option to write QE files
+    generate_doped_structures(
         args.poscar_file, 
         args.original_type, 
         args.dopant, 
         args.num_dopants, 
         args.num_structures, 
-        args.output_dir
+        args.output_dir,
+        qe=args.qe
     )
-
-    # If the --qe flag is used, generate QE files for each structure
-    if args.qe:
-        for idx, structure in enumerate(generated_structures):
-            qe_output_path = os.path.join(args.output_dir, f'qe_input_{idx + 1}.in')
-            write_qe_file(qe_output_path, structure)
 
 if __name__ == '__main__':
     main()
