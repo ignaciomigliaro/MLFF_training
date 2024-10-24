@@ -205,29 +205,23 @@ def filter_high_deviation_structures(atoms_lists, energies, std_dev_normalized, 
     """
     filtered_atoms_list = []
 
-    # Calculate the total number of atoms for consistency check
-    num_atoms = sum(len(atoms) for atoms in atoms_lists)
+    # Use the length of atoms in the first element of atoms_lists to determine the number of atoms
+    num_atoms = len(atoms_lists[0]) if atoms_lists else 0
     
-    # Ensure std_dev_normalized matches the number of atoms
+    # Ensure std_dev_normalized matches the number of atoms in a single configuration
     if len(std_dev_normalized) != num_atoms:
         print(f"Warning: Length mismatch! std_dev_normalized has {len(std_dev_normalized)} elements, "
-              f"but there are {num_atoms} atoms in atoms_lists.")
+              f"but expected {num_atoms} based on the first configuration in atoms_lists.")
         return filtered_atoms_list  # Return an empty list if there's a mismatch
 
     # Iterate over each configuration and filter based on the threshold
-    atom_index = 0
-    for atoms in atoms_lists:
-        # Calculate the average normalized deviation for this configuration
-        config_deviation = std_dev_normalized[atom_index:atom_index + len(atoms)]
-        avg_deviation = sum(config_deviation) / len(config_deviation)
-        
-        # If the average deviation is above the threshold, add to the filtered list
-        if avg_deviation > threshold:
+    for i, atoms in enumerate(atoms_lists):
+        # Check if the normalized deviation for this configuration exceeds the threshold
+        if std_dev_normalized[i] > threshold:
             filtered_atoms_list.append(atoms)
-        
-        atom_index += len(atoms)  # Move to the next set of atoms
 
     return filtered_atoms_list
+
 
 
 def main():
