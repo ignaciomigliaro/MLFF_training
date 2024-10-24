@@ -190,6 +190,46 @@ def calculate_energies_and_std(atoms_lists):
 
     return energies_array.tolist(), std_dev_normalized.tolist()
 
+def filter_high_deviation_structures(atoms_lists, energies, std_dev_normalized, threshold=1.0):
+    """
+    Filter configurations with normalized standard deviation above a threshold value.
+
+    Parameters:
+    - atoms_lists (list): List of lists of ASE Atoms objects with calculators set.
+    - energies (list): List of lists containing energies for each atom across calculators.
+    - std_dev_normalized (list): List of normalized standard deviations of energies.
+    - threshold (float): The threshold value for filtering. Default is 1.0.
+
+    Returns:
+    - filtered_atoms_list (list): A new list containing configurations with std_dev above the threshold.
+    """
+    filtered_atoms_list = []
+
+    # Calculate the total number of atoms for consistency check
+    num_atoms = sum(len(atoms) for atoms in atoms_lists)
+    
+    # Ensure std_dev_normalized matches the number of atoms
+    if len(std_dev_normalized) != num_atoms:
+        print(f"Warning: Length mismatch! std_dev_normalized has {len(std_dev_normalized)} elements, "
+              f"but there are {num_atoms} atoms in atoms_lists.")
+        return filtered_atoms_list  # Return an empty list if there's a mismatch
+
+    # Iterate over each configuration and filter based on the threshold
+    atom_index = 0
+    for atoms in atoms_lists:
+        # Calculate the average normalized deviation for this configuration
+        config_deviation = std_dev_normalized[atom_index:atom_index + len(atoms)]
+        avg_deviation = sum(config_deviation) / len(config_deviation)
+        
+        # If the average deviation is above the threshold, add to the filtered list
+        if avg_deviation > threshold:
+            filtered_atoms_list.append(atoms)
+        
+        atom_index += len(atoms)  # Move to the next set of atoms
+
+    return filtered_atoms_list
+
+
 def main():
     # Parse command-line arguments
     args = parse_arguments()
@@ -206,8 +246,8 @@ def main():
     # Print the number of configurations loaded
     print(f"Number of configurations loaded: {len(atoms_list)}")
     energies, std_dev = calculate_energies_and_std(atoms_lists)
-    print(len(std_dev))
-    print(std_dev)
+    filtered_atoms_list = filter_high_deviation_structures(atoms_lists, energies, std_dev, threshold=1.0)
+    print(len(filtered_atoms_list))
 
 if __name__ == "__main__":
     main()
