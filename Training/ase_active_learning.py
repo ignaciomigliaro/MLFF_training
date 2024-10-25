@@ -1,4 +1,4 @@
-from ase.io import read
+from ase.io import read,write
 import os
 import argparse
 from chgnet.model.dynamics import CHGNetCalculator
@@ -31,59 +31,18 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(description="Read configurations and choose a calculator for ASE.")
     
-    parser.add_argument(
-        "filepath",
-        type=str,
-        help="Path to a file or directory containing the configuration files."
-    )
-    
-    parser.add_argument(
-        "--calculator",
-        type=str,
-        choices=CALCULATOR_MAP.keys(),
-        required=True,
-        default='CHGnet',
-        help="Choose a calculator: ALIGNN, CHGnet, DEEPMD-kit, MG3NET, MACE."
-    )
-
-    parser.add_argument(
-        "--stepsize",
-        type=int,
-        default=1,
-        help="Step size for subsampling configurations (default: 1)."
-    )
-    parser.add_argument(
-        "--model_dir",
-        type=str,
-        required=True,
-        help="Path to the directory containing model files."
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default='cpu',
-        help='Device used to calculate inference using MLFF'
-    )
-    parser.add_argument(
-    "--threshold",
-    type=float,
-    default=None,
-    help="Override the default filtering threshold. If not provided, the 98th percentile is used."
-)
-    parser.add_argument(
-        "--plot_std_dev",
-        action='store_true',
-        help="Include this flag to plot the standard deviation distribution."
-    )
-    
-    parser.add_argument(
-        "--dft_software",
-        type=str,
-        choices=['vasp', 'quantum_espresso'],
-        required=True,
-        help="Specify the DFT software to use: 'vasp' or 'quantum_espresso'."
-    )
-    return parser.parse_args()
+def parse_arguments():
+        parser = argparse.ArgumentParser(description="Active learning with MLFF for crystal structures.")
+        parser.add_argument("--filepath", type=str, required=True, help="Path to the configuration file or directory.")
+        parser.add_argument("--stepsize", type=int, default=1, help="Step size for loading configurations.")
+        parser.add_argument("--model_dir", type=str, required=True, help="Directory containing trained models.")
+        parser.add_argument("--calculator", type=str, required=True, help="Calculator to use (e.g., chgnet, some_other_calculator).")
+        parser.add_argument("--device", type=str, default="cpu", help="Device to use for computation (e.g., cpu or cuda).")
+        parser.add_argument("--dft_software", type=str, choices=["quantum_espresso"], required=True,help="DFT software to use. Currently only 'quantum_espresso' is supported.")
+        parser.add_argument("--threshold", type=float, default=None, help="User-defined threshold for filtering structures.")
+        parser.add_argument("--plot_std_dev", action="store_true", help="Flag to plot the distribution of standard deviations.")
+        parser.add_argument("--output_dir", type=str, default="qe_outputs", help="Directory to save Quantum Espresso files.")
+        return parser.parse_args()
 
 def get_configuration_space(path, stepsize):
     """
@@ -261,12 +220,62 @@ def plot_std_dev_distribution(std_devs):
     plt.grid(True)
     plt.show()
 
+def write_qe_file(output_directory, crystal_structure):
+    # Define QE input parameters
+    input_data = {
+        "calculation": "scf",
+        "prefix": "qe_input",
+        "pseudo_dir": "~/QE/pseudo",
+        "outdir": "./out/",
+        "verbosity": "high",
+        "etot_conv_thr": 1.0e-03,
+        "tstress": True,
+        "tprnfor": True,
+        "degauss": 1.4699723600e-02,
+        "ecutrho": 600,
+        "ecutwfc": 90,
+        "vdw_corr": "mbd",
+        "occupations": "smearing",
+        "smearing": 'cold',
+        "electron_maxstep": 80,
+        "mixing_beta": 4.0e-01,
+    }
+    
+    # Define pseudopotentials
+    pseudos = {
+        "Cl": "Cl.upf",
+        "O": "O.upf",
+        "F": "F.upf",
+        "I": "I.upf",
+        "Br": "Br.upf",
+        "La": "La.upf",
+        "Li": "Li.upf",
+        "Zr": "Zr.upf",
+        "C" : "C.upf",
+        "H" : "H.upf",
+        "Nb": "Nb.upf",
+    }
 
-
+    # Create the output directory if it does not exist
+    os.makedirs(output_directory, exist_ok=True)
+    
+    # Write the QE input file using ASE's write function
+    filename = os.path.join(output_directory, "qe_input.in")
+    write(
+        format='espresso-in',
+        filename=filename,
+        images=crystal_structure, 
+        input_data=input_data,
+        pseudopotentials=pseudos,
+        kspacing=0.05
+    )
 
 def main():
     # Parse command-line arguments
     args = parse_arguments()
+
+    # Create the output directory if it doesn't exist
+    os.makedirs(args.output_dir, exist_ok=True)
 
     # Get the configuration space based on the provided file or directory
     atoms_list = get_configuration_space(args.filepath, args.stepsize)
@@ -293,10 +302,16 @@ def main():
         std_dev=std_dev,
         user_threshold=args.threshold  # Pass the user-defined threshold
     )
-
     # Print the results
     print(std_dev)
-    print(f"Number of selected structures: {len(filtered_atoms_list)}")
+    print(f"Number of filtered structures: {len(filtered_atoms_list)}")
+
+    # Write Quantum Espresso input files for filtered structures
+    for idx, atoms in enumerate(filtered_atoms_list):
+        # Define the subdirectory for each filtered structure
+        structure_output_dir = os.path.join(args.output_dir, f"structure_{idx}")
+        os.makedirs(structure_output_dir, exist_ok=True)
+        write_qe_file(structure_output_dir, atoms)
 
 if __name__ == "__main__":
     main()
