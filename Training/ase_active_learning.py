@@ -21,15 +21,6 @@ CALCULATOR_MAP = {
     'MG3NET': 'mg3net.ase.MG3Net',
     'MACE': 'mace.ase.MACE',
 }
-
-def parse_arguments():
-    """
-    Parses command-line arguments for the script.
-
-    Returns:
-    - args: The parsed arguments object with attributes for each argument.
-    """
-    parser = argparse.ArgumentParser(description="Read configurations and choose a calculator for ASE.")
     
 def parse_arguments():
         parser = argparse.ArgumentParser(description="Active learning with MLFF for crystal structures.")
@@ -38,7 +29,7 @@ def parse_arguments():
         parser.add_argument("--model_dir", type=str, required=True, help="Directory containing trained models.")
         parser.add_argument("--calculator", type=str, required=True, help="Calculator to use (e.g., chgnet, some_other_calculator).")
         parser.add_argument("--device", type=str, default="cpu", help="Device to use for computation (e.g., cpu or cuda).")
-        parser.add_argument("--dft_software", type=str, choices=["quantum_espresso"], required=True,help="DFT software to use. Currently only 'quantum_espresso' is supported.")
+        parser.add_argument("--dft_software", type=str, choices=["qe"], required=True,help="DFT software to use. Currently only 'quantum_espresso' is supported.")
         parser.add_argument("--threshold", type=float, default=None, help="User-defined threshold for filtering structures.")
         parser.add_argument("--plot_std_dev", action="store_true", help="Flag to plot the distribution of standard deviations.")
         parser.add_argument("--output_dir", type=str, default="qe_outputs", help="Directory to save Quantum Espresso files.")
@@ -303,15 +294,20 @@ def main():
         user_threshold=args.threshold  # Pass the user-defined threshold
     )
     # Print the results
-    print(std_dev)
+    #print(std_dev)
     print(f"Number of filtered structures: {len(filtered_atoms_list)}")
 
-    # Write Quantum Espresso input files for filtered structures
+    # Write input files for the filtered structures based on DFT software choice
     for idx, atoms in enumerate(filtered_atoms_list):
         # Define the subdirectory for each filtered structure
         structure_output_dir = os.path.join(args.output_dir, f"structure_{idx}")
         os.makedirs(structure_output_dir, exist_ok=True)
-        write_qe_file(structure_output_dir, atoms)
+
+        # Write the appropriate input file based on the chosen DFT software
+        if args.dft_software.lower() == 'qe':
+            write_qe_file(structure_output_dir, atoms)
+        else:
+            print(f"Unsupported DFT software: {args.dft_software}")
 
 if __name__ == "__main__":
     main()
