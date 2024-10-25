@@ -70,6 +70,19 @@ def parse_arguments():
     default=None,
     help="Override the default filtering threshold. If not provided, the 98th percentile is used."
 )
+    parser.add_argument(
+        "--plot_std_dev",
+        action='store_true',
+        help="Include this flag to plot the standard deviation distribution."
+    )
+    
+    parser.add_argument(
+        "--dft_software",
+        type=str,
+        choices=['vasp', 'quantum_espresso'],
+        required=True,
+        help="Specify the DFT software to use: 'vasp' or 'quantum_espresso'."
+    )
     return parser.parse_args()
 
 def get_configuration_space(path, stepsize):
@@ -198,8 +211,7 @@ def calculate_energies_and_std(atoms_lists):
 
     return energies_array.tolist(), std_dev_normalized.tolist()
 
-
-def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=98):
+def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
     """
     Filters structures based on the normalized standard deviation.
     Includes structures with normalized deviation equal to or above the specified threshold.
@@ -223,7 +235,7 @@ def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, 
         print(f"User-defined threshold for filtering: {threshold}")
     else:
         threshold = np.percentile(std_dev_normalized, percentile)
-        print(f"Threshold for filtering (98th percentile): {threshold}")
+        print(f"Threshold for filtering (95th percentile): {threshold}")
 
     # Filter structures based on the chosen threshold
     filtered_atoms_list = []
@@ -250,6 +262,8 @@ def plot_std_dev_distribution(std_devs):
     plt.show()
 
 
+
+
 def main():
     # Parse command-line arguments
     args = parse_arguments()
@@ -269,17 +283,20 @@ def main():
     # Calculate energies and standard deviation
     energies, std_dev = calculate_energies_and_std(atoms_lists)
 
+    # Plot the distribution of standard deviations if the flag is set
+    if args.plot_std_dev:
+        plot_std_dev_distribution(std_dev)
+
     # Use user-defined threshold if provided
     filtered_atoms_list = filter_high_deviation_structures(
         atoms_lists=atoms_lists,
         std_dev=std_dev,
         user_threshold=args.threshold  # Pass the user-defined threshold
     )
-    plot_std_dev_distribution(std_dev)
 
     # Print the results
-    #print(std_dev)
-    print(f"Number of filtered structures: {len(filtered_atoms_list)}")
+    print(std_dev)
+    print(f"Number of selected structures: {len(filtered_atoms_list)}")
 
 if __name__ == "__main__":
     main()
