@@ -157,9 +157,9 @@ def calculate_energies_and_std(atoms_lists):
 
     # Divide standard deviation by the number of atoms
     num_atoms = len(atoms_lists[0])  # Assuming all lists have the same number of atoms
-    std_dev_normalized = std_dev / num_atoms
+    std_dev_normalized = std_dev
 
-    return energies_array.tolist(), std_dev_normalized.tolist()
+    return energies_array.tolist(), std_dev_normalized.tolist(),atoms_lists
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
     """
@@ -281,7 +281,7 @@ def main():
     print(f"Number of configurations loaded: {len(atoms_list)}")
 
     # Calculate energies and standard deviation
-    energies, std_dev = calculate_energies_and_std(atoms_lists)
+    energies, std_dev,atoms_lists = calculate_energies_and_std(atoms_lists)
 
     # Plot the distribution of standard deviations if the flag is set
     if args.plot_std_dev:

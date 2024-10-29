@@ -53,7 +53,7 @@ def write_qe_file(output_directory, crystal_structure):
     input_data = {
         "calculation": "vc-relax",
         "prefix": "qe_input",
-        "pseudo_dir": "~/QE/pseudo",
+        "pseudo_dir": "/home/dal950773/QE/pseudo",
         "outdir": "./out/",
         "verbosity": "high",
         "etot_conv_thr": 1.0e-03,
