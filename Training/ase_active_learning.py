@@ -144,17 +144,7 @@ def calculate_energies_and_std(atoms_lists, cache_file=None):
     - std_dev (list): A list of standard deviations of the energies for each atom divided by N.
     - atoms_lists (list): The input atoms_lists, for reference.
     """
-    # Load from cache if cache file is provided and exists
-    if cache_file and os.path.exists(cache_file):
-        try:
-            # Load data, specifying that we want to map to CPU
-            loaded_data = torch.load(cache_file, map_location=torch.device('cpu'))
-            print(f"Loaded energy and std_dev data from cache file: {cache_file}")
-            return loaded_data['energies'], loaded_data['std_dev'], loaded_data['atoms_lists']
-        except Exception as e:
-            print(f"Error loading cache file: {e}")
-    
-    # Calculate energies and std_dev if no cache is found or caching is disabled
+    # Calculate energies and std_dev
     energies = []
     print("Calculating energies with progress tracking:")
     
@@ -168,21 +158,28 @@ def calculate_energies_and_std(atoms_lists, cache_file=None):
     energies_array = np.array(energies)
     std_dev = np.std(energies_array, axis=0)
 
-    # Save to cache file if cache_file is specified
+    # Save to GPU file if cache_file is specified
     if cache_file:
         try:
-            # Transfer tensors to CPU and save them in tensor format
+            # Save initial GPU-based data
             data_to_save = {
-                'energies': torch.tensor(energies_array).cpu(),
-                'std_dev': torch.tensor(std_dev).cpu(),
-                'atoms_lists': atoms_lists  # Ensure this is serializable or transform if necessary
+                'energies': torch.tensor(energies_array),
+                'std_dev': torch.tensor(std_dev),
+                'atoms_lists': atoms_lists  # Make sure this is serializable
             }
             torch.save(data_to_save, cache_file)
-            print(f"Energy and std_dev data saved to {cache_file}.")
+            print(f"Energy and std_dev data initially saved to GPU file {cache_file}.")
+
+            # Reload in CPU mode and re-save
+            cpu_data = torch.load(cache_file, map_location='cpu')
+            torch.save(cpu_data, cache_file)
+            print(f"Data re-saved to {cache_file} in CPU-compatible format.")
+
         except Exception as e:
-            print(f"Error saving cache file: {e}")
+            print(f"Error processing cache file: {e}")
 
     return energies_array.tolist(), std_dev.tolist(), atoms_lists
+
 
 
 
