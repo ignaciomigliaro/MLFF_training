@@ -168,13 +168,15 @@ def calculate_energies_and_std(atoms_lists, cache_file=None):
     # Convert to numpy array for standard deviation calculation
     energies_array = np.array(energies)
     std_dev = np.std(energies_array, axis=0).tolist()
-
+    torch.tensor(energies_array).cpu()
+    torch.tensor(std_dev).cpu()
+    torch.tensor(atoms_lists).cpu()
     # Save to cache file if cache_file is specified
     if cache_file:
         try:
             data_to_save = {
-                'energies': torch.tensor(energies_array).cpu().tolist(),  # Ensure energies are on CPU
-                'std_dev': torch.tensor(std_dev).cpu().tolist(),          # Ensure std_dev is on CPU
+                'energies': torch.tensor(energies_array).tolist(),  # Ensure energies are on CPU
+                'std_dev': torch.tensor(std_dev).tolist(),          # Ensure std_dev is on CPU
                 'atoms_lists': atoms_lists  # Make sure this is serializable
             }
             torch.save(data_to_save, cache_file)
