@@ -148,8 +148,7 @@ def calculate_energies_and_std(atoms_lists, cache_file=None):
     if cache_file and os.path.exists(cache_file):
         try:
             # Load data, specifying that we want to map to CPU
-            device = torch.device('cpu')
-            loaded_data = torch.load(cache_file, map_location=device)
+            loaded_data = torch.load(cache_file, map_location=torch.device('cpu'))
             print(f"Loaded energy and std_dev data from cache file: {cache_file}")
             return loaded_data['energies'], loaded_data['std_dev'], loaded_data['atoms_lists']
         except Exception as e:
@@ -167,24 +166,24 @@ def calculate_energies_and_std(atoms_lists, cache_file=None):
 
     # Convert to numpy array for standard deviation calculation
     energies_array = np.array(energies)
-    std_dev = np.std(energies_array, axis=0).tolist()
-    torch.tensor(energies_array).cpu()
-    torch.tensor(std_dev).cpu()
-    torch.tensor(atoms_lists).cpu()
+    std_dev = np.std(energies_array, axis=0)
+
     # Save to cache file if cache_file is specified
     if cache_file:
         try:
+            # Transfer tensors to CPU and save them in tensor format
             data_to_save = {
-                'energies': torch.tensor(energies_array).tolist(),  # Ensure energies are on CPU
-                'std_dev': torch.tensor(std_dev).tolist(),          # Ensure std_dev is on CPU
-                'atoms_lists': atoms_lists  # Make sure this is serializable
+                'energies': torch.tensor(energies_array).cpu(),
+                'std_dev': torch.tensor(std_dev).cpu(),
+                'atoms_lists': atoms_lists  # Ensure this is serializable or transform if necessary
             }
             torch.save(data_to_save, cache_file)
             print(f"Energy and std_dev data saved to {cache_file}.")
         except Exception as e:
             print(f"Error saving cache file: {e}")
 
-    return energies_array.tolist(), std_dev, atoms_lists
+    return energies_array.tolist(), std_dev.tolist(), atoms_lists
+
 
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
