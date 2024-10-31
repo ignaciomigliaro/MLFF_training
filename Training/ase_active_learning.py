@@ -130,11 +130,6 @@ def set_calculator(atoms_list, calculator_name, models, device):
 
     return updated_atoms_lists
 
-import os
-import torch
-import numpy as np
-from tqdm import tqdm  # Make sure to import tqdm if you haven't already
-
 def calculate_energies_and_std(atoms_lists, cache_file=None):
     """
     Calculate the energies for each atom in the configuration across different calculators
@@ -178,16 +173,17 @@ def calculate_energies_and_std(atoms_lists, cache_file=None):
     if cache_file:
         try:
             data_to_save = {
-                'energies': energies_array.tolist(),
-                'std_dev': std_dev,
-                'atoms_lists': atoms_lists
+                'energies': torch.tensor(energies_array).cpu().tolist(),  # Ensure energies are on CPU
+                'std_dev': torch.tensor(std_dev).cpu().tolist(),          # Ensure std_dev is on CPU
+                'atoms_lists': atoms_lists  # Make sure this is serializable
             }
-            torch.save(data_to_save, cache_file,map_location=torch.device('cpu'))
+            torch.save(data_to_save, cache_file)
             print(f"Energy and std_dev data saved to {cache_file}.")
         except Exception as e:
             print(f"Error saving cache file: {e}")
 
     return energies_array.tolist(), std_dev, atoms_lists
+
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
     """
