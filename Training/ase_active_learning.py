@@ -30,7 +30,7 @@ def parse_arguments():
         parser.add_argument("--model_dir", type=str, required=True, help="Directory containing trained models.")
         parser.add_argument("--calculator", type=str, required=True, help="Calculator to use (e.g., chgnet, some_other_calculator).")
         parser.add_argument("--device", type=str, default="cpu", help="Device to use for computation (e.g., cpu or cuda).")
-        parser.add_argument("--dft_software", type=str, choices=["qe"], required=True,help="DFT software to use. Currently only 'quantum_espresso' is supported.")
+        parser.add_argument("--dft_software", type=str, choices=["qe"], required=False,help="DFT software to use. Currently only 'quantum_espresso' is supported.")
         parser.add_argument("--threshold", type=float, default=None, help="User-defined threshold for filtering structures.")
         parser.add_argument("--plot_std_dev", action="store_true", help="Flag to plot the distribution of standard deviations.")
         parser.add_argument("--output_dir", type=str, default="qe_outputs", help="Directory to save Quantum Espresso files.")
