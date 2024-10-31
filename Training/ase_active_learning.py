@@ -182,7 +182,7 @@ def calculate_energies_and_std(atoms_lists, cache_file=None):
                 'std_dev': std_dev,
                 'atoms_lists': atoms_lists
             }
-            torch.save(data_to_save, cache_file)
+            torch.save(data_to_save, cache_file,map_location=torch.device('cpu'))
             print(f"Energy and std_dev data saved to {cache_file}.")
         except Exception as e:
             print(f"Error saving cache file: {e}")
