@@ -102,7 +102,7 @@ def load_models(model_dir, device='cpu', extension='.pth.tar'):
     print(f"Successfully loaded {len(models)} models.")
     return models
 
-def calculate_properties(configurations, models, device='cpu', cache_file=None):
+def calculate_properties(configurations, models, device='cpu'):
     """
     Create a list of configurations for each model, assign calculators, and optionally cache the results.
 
@@ -128,47 +128,62 @@ def calculate_properties(configurations, models, device='cpu', cache_file=None):
         all_configurations.append(config_copy)
 
     # Cache the configurations if a cache_file is specified
-    if cache_file:
-        try:
-            data_to_save = {'all_configurations': all_configurations}
-            torch.save(data_to_save, cache_file)
-            print(f"Configurations saved to {cache_file}.")
-
-            # Reload in CPU mode and re-save
-            cpu_data = torch.load(cache_file, map_location='cpu')
-            torch.save(cpu_data, cache_file)
-            print(f"Configurations re-saved to {cache_file} in CPU-compatible format.")
-
-        except Exception as e:
-            print(f"Error processing cache file: {e}")
-
+    
     return all_configurations
 
-def calculate_std_dev(all_configurations):
+import numpy as np
+import torch
+
+def calculate_std_dev(all_configurations, cache_file=None):
     """
-    Calculate the standard deviation of energies for each atom across different models.
+    Calculate the standard deviation of energies for each atom across different models
+    and cache the energies and configurations to a binary file if specified.
 
     Parameters:
     - all_configurations (list): List of configurations, where each configuration is a list of ASE Atoms objects
-                                 with calculators already set for different models.
+                                 with pre-computed energies already set for different models.
+    - cache_file (str): Optional path to a file where the energy values and configurations will be cached.
 
     Returns:
     - std_dev (list): A list containing the standard deviation of energies for each atom across the models.
+    - energy_values (list): A list containing the computed energy values for each atom.
     """
     num_atoms = len(all_configurations[0])  # Assume all configurations have the same number of atoms
     energies = [[] for _ in range(num_atoms)]
 
-    # Iterate through each configuration (model) and get energies for each atom
+    # Iterate through each configuration and collect energies for each atom
     for config in all_configurations:
         for i, atom in enumerate(config):
-            energy = atom.get_total_energy()
+            energy = atom.get_total_energy()  # Access the energy for each atom
             energies[i].append(energy)
 
-    # Calculate standard deviation across configurations for each atom
+    # Convert to numpy array for standard deviation calculation
     energies_array = np.array(energies)
     std_dev = np.std(energies_array, axis=1)
 
-    return std_dev.tolist()
+    # Cache energy values and configurations to a binary file if specified
+    if cache_file:
+        try:
+            # Prepare data to save
+            data_to_save = {
+                'all_configurations': all_configurations,  # Save all configurations
+                'energy_values': energies_array.tolist(),  # Save energies as a list
+                'std_dev': std_dev.tolist()  # Save standard deviations
+            }
+            torch.save(data_to_save, cache_file)
+            print(f"Energy values, standard deviations, and configurations saved to {cache_file}.")
+
+            # Reload in CPU mode (if necessary) and re-save
+            cpu_data = torch.load(cache_file, map_location='cpu')
+            torch.save(cpu_data, cache_file)
+            print(f"Data re-saved to {cache_file} in CPU-compatible format.")
+
+        except Exception as e:
+            print(f"Error processing cache file: {e}")
+
+    return std_dev.tolist(), energies_array.tolist()  # Return both std dev and energy values
+
+
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
     """
