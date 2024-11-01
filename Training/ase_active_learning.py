@@ -306,9 +306,9 @@ def main():
         configurations=atoms_list,
         models=models,
         device=args.device,
-        cache_file=args.use_cache  # Pass the user-defined cache file path or None if not provided
+         # Pass the user-defined cache file path or None if not provided
     )
-    std_dev= calculate_std_dev(atoms_list)
+    std_dev= calculate_std_dev(atoms_list, cache_file=args.use_cache)
     # Plot the distribution of standard deviations if the flag is set
     if args.plot_std_dev:
         plot_std_dev_distribution(std_dev)
