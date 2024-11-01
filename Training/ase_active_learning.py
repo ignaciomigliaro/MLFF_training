@@ -69,20 +69,21 @@ def get_configuration_space(path, stepsize):
     
     return configurations
 
-def load_models(model_dir, device="cpu"):
+def load_models(model_dir, device='cpu', extension='.pth.tar'):
     """
-    Load models from a specified directory.
+    Load CHGNet models from a specified directory, suppress output, and handle loading errors.
 
     Parameters:
-    - model_dir (str): Path to the directory containing the models.
-    - device (str): Device to use for loading the model (e.g., "cpu" or "cuda").
+    - model_dir (str): Directory containing model files.
+    - device (str): Device to use for loading models (e.g., 'cpu' or 'cuda').
+    - extension (str): File extension to filter model files (default is '.pth.tar').
 
     Returns:
-    - list: A list of loaded model objects.
+    - models (list): List of loaded CHGNet models.
     """
     models = []
     for filename in os.listdir(model_dir):
-        if filename.endswith('.pth.tar'):  # Adjust this based on your model file extension
+        if filename.endswith(extension):
             model_path = os.path.join(model_dir, filename)
             try:
                 # Suppress output during model loading
@@ -97,91 +98,77 @@ def load_models(model_dir, device="cpu"):
                 models.append(loaded_model)
             except Exception as e:
                 print(f"Failed to load model from {model_path}: {e}")
+
+    print(f"Successfully loaded {len(models)} models.")
     return models
 
-def set_calculator(atoms_list, calculator_name, models, device):
+def calculate_properties(configurations, models, device='cpu', cache_file=None):
     """
-    Sets the calculator for a list of ASE Atoms objects based on user input.
+    Create a list of configurations for each model, assign calculators, and optionally cache the results.
 
     Parameters:
-    - atoms_list (list): List of ASE Atoms objects.
-    - calculator_name (str): The name of the calculator to use.
-    - models (list): List of loaded models for the calculator.
-    - device (str): Device used to calculate inference.
+    - configurations (list): Original list of ASE Atoms objects (the base configuration).
+    - models (list): List of CHGNet models to use for creating configurations.
+    - device (str): Device to use for calculation (e.g., 'cpu' or 'cuda').
+    - cache_file (str, optional): Path to a file for saving/loading the configurations. If None, no caching is done.
 
     Returns:
-    - updated_atoms_lists (list): List of lists of ASE Atoms objects with calculators set.
+    - all_configurations (list): List of lists where each inner list corresponds to configurations for a single model.
     """
-    updated_atoms_lists = []  # List to hold the updated atoms lists for each model
+    all_configurations = []
 
-    if calculator_name == 'CHGnet':
-        from chgnet.model.dynamics import CHGNetCalculator
-        
-        for model in models:
-            # Create calculator instance for this model
-            calculator = CHGNetCalculator(model=model, use_device=device)
+    for model in tqdm(models, desc="Models"):
+        calculator = CHGNetCalculator(model=model, use_device=device)
 
-            # Create a new atoms list for the current model
-            atoms_copy = [atom.copy() for atom in atoms_list]
-            for atom in atoms_copy:
-                atom.calc = calculator  # Set the calculator for each Atoms object
+        # Create a deep copy of configurations and assign calculator for this model
+        config_copy = [atoms.copy() for atoms in configurations]
+        for atoms in tqdm(config_copy, desc="Configurations", leave=False):
+            atoms.calc = calculator  # Set the model-specific calculator
 
-            updated_atoms_lists.append(atoms_copy)
+        all_configurations.append(config_copy)
 
-    return updated_atoms_lists
-
-def calculate_energies_and_std(atoms_lists, cache_file=None):
-    """
-    Calculate the energies for each atom in the configuration across different calculators
-    and get the standard deviation of the energies divided by the number of atoms.
-    
-    Parameters:
-    - atoms_lists (list): List of lists of ASE Atoms objects with calculators set.
-    - cache_file (str): Path to a torch file for saving/loading energies and std_dev data. If None, no caching is done.
-
-    Returns:
-    - energies (list): A list of lists containing energies for each atom across calculators.
-    - std_dev (list): A list of standard deviations of the energies for each atom divided by N.
-    - atoms_lists (list): The input atoms_lists, for reference.
-    """
-    # Calculate energies and std_dev
-    energies = []
-    print("Calculating energies with progress tracking:")
-    
-    for atoms in tqdm(atoms_lists, desc="Configurations"):
-        energy_for_atoms = [
-            atom.get_total_energy() for atom in tqdm(atoms, desc="Atoms", leave=False)
-        ]
-        energies.append(energy_for_atoms)
-
-    # Convert to numpy array for standard deviation calculation
-    energies_array = np.array(energies)
-    std_dev = np.std(energies_array, axis=0)
-
-    # Save to GPU file if cache_file is specified
+    # Cache the configurations if a cache_file is specified
     if cache_file:
         try:
-            # Save initial GPU-based data
-            data_to_save = {
-                'energies': torch.tensor(energies_array),
-                'std_dev': torch.tensor(std_dev),
-                'atoms_lists': atoms_lists  # Make sure this is serializable
-            }
+            data_to_save = {'all_configurations': all_configurations}
             torch.save(data_to_save, cache_file)
-            print(f"Energy and std_dev data initially saved to GPU file {cache_file}.")
+            print(f"Configurations saved to {cache_file}.")
 
             # Reload in CPU mode and re-save
             cpu_data = torch.load(cache_file, map_location='cpu')
             torch.save(cpu_data, cache_file)
-            print(f"Data re-saved to {cache_file} in CPU-compatible format.")
+            print(f"Configurations re-saved to {cache_file} in CPU-compatible format.")
 
         except Exception as e:
             print(f"Error processing cache file: {e}")
 
-    return energies_array.tolist(), std_dev.tolist(), atoms_lists
+    return all_configurations
 
+def calculate_std_dev(all_configurations):
+    """
+    Calculate the standard deviation of energies for each atom across different models.
 
+    Parameters:
+    - all_configurations (list): List of configurations, where each configuration is a list of ASE Atoms objects
+                                 with calculators already set for different models.
 
+    Returns:
+    - std_dev (list): A list containing the standard deviation of energies for each atom across the models.
+    """
+    num_atoms = len(all_configurations[0])  # Assume all configurations have the same number of atoms
+    energies = [[] for _ in range(num_atoms)]
+
+    # Iterate through each configuration (model) and get energies for each atom
+    for config in all_configurations:
+        for i, atom in enumerate(config):
+            energy = atom.get_total_energy()
+            energies[i].append(energy)
+
+    # Calculate standard deviation across configurations for each atom
+    energies_array = np.array(energies)
+    std_dev = np.std(energies_array, axis=1)
+
+    return std_dev.tolist()
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
     """
@@ -296,25 +283,24 @@ def main():
     # Load models from the specified directory
     models = load_models(args.model_dir)
 
-    # Set the calculator and get the atoms lists for each model
-    atoms_lists = set_calculator(atoms_list, args.calculator, models, args.device)
-
     # Print the number of configurations loaded
     print(f"Number of configurations loaded: {len(atoms_list)}")
 
     # Calculate energies and standard deviation, using cache if specified
-    energies, std_dev, atoms_lists = calculate_energies_and_std(
-        atoms_lists=atoms_lists,
+    atoms_list = calculate_properties(
+        configurations=atoms_list,
+        models=models,
+        device=args.device,
         cache_file=args.use_cache  # Pass the user-defined cache file path or None if not provided
     )
-
+    std_dev= calculate_std_dev(atoms_list)
     # Plot the distribution of standard deviations if the flag is set
     if args.plot_std_dev:
         plot_std_dev_distribution(std_dev)
 
     # Use user-defined threshold to filter high-deviation structures
     filtered_atoms_list = filter_high_deviation_structures(
-        atoms_lists=atoms_lists,
+        atoms_lists=atoms_list,
         std_dev=std_dev,
         user_threshold=args.threshold
     )
