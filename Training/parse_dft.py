@@ -78,7 +78,7 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
             OUTCAR = filepath / i / filename
             try:
                 # Read the entire OUTCAR file
-                single_file_atom = read(OUTCAR, format='vasp-out', index=':')
+                single_file_atom = read(OUTCAR, index=':')
                 last_energy = read(OUTCAR, format='vasp-out')
                 last_energy = last_energy.get_total_energy()
                 
@@ -344,7 +344,7 @@ def main():
     if mace_flag: 
         prepare_mace(output, atoms_list)
     else:
-        prepare_data(output, atoms_list, energy, forces, stresses, mag_mom)
+        prepare_data(output, atoms_list, total_energy,energy, forces, stresses, mag_mom)
 
 if __name__ == '__main__':
     main()
