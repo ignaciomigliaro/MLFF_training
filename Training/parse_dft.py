@@ -69,17 +69,28 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
     warnings.filterwarnings('ignore')
     atoms_list = []
     len_list = []
-    filename = Path('OUTCAR')
     total_iterations = len(os.listdir(filepath))
 
     with tqdm(total=total_iterations, desc='Processing') as pbar:
         for i in os.listdir(filepath):
             dir = Path(i)
-            OUTCAR = filepath / i / filename
+            outcar_path = filepath / i / 'OUTCAR'
+            pwscf_path = filepath / i / 'pwscf.out'
+            
+            if outcar_path.exists():
+                file_path = outcar_path
+            elif pwscf_path.exists():
+                file_path = pwscf_path
+            else:
+                if verbose:
+                    print(f"No valid file ('OUTCAR' or 'pwscf.out') found in {filepath / i}")
+                pbar.update(1)
+                continue
+            
             try:
-                # Read the entire OUTCAR file
-                single_file_atom = read(OUTCAR, index=':')
-                last_energy = read(OUTCAR,)
+                # Read the entire file (OUTCAR or pwscf.out)
+                single_file_atom = read(file_path, index=':')
+                last_energy = read(file_path)
                 last_energy = last_energy.get_total_energy()
                 
                 # Convert single_file_atom to a list
@@ -98,7 +109,7 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
                         a.info['relaxed_energy'] = last_energy
             except Exception as e:
                 if verbose:
-                    print(f"Error reading file: {OUTCAR}")
+                    print(f"Error reading file: {file_path}")
                     print(f"Error details: {e}")
                 continue
             finally:
