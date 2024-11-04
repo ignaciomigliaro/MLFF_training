@@ -79,7 +79,7 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
             try:
                 # Read the entire OUTCAR file
                 single_file_atom = read(OUTCAR, index=':')
-                last_energy = read(OUTCAR, format='vasp-out')
+                last_energy = read(OUTCAR,)
                 last_energy = last_energy.get_total_energy()
                 
                 # Convert single_file_atom to a list
