@@ -336,7 +336,7 @@ def main():
     if filter_flag:
         energies_per_atom2 = energy
         atoms_list = remove_outliers_quartile(atoms_list, energy)
-        atoms_list, energies_per_atom, forces, stresses, relaxed_energies_per_atom, mag_mom = create_property_lists(atoms_list)
+        atoms_list, total_energy,energies_per_atom, forces, stresses, relaxed_energies_per_atom, mag_mom = create_property_lists(atoms_list)
         calculate_stats(relaxed_energies_per_atom if relax_flag else energies_per_atom)
         energy = relaxed_energies_per_atom if relax_flag else energies_per_atom
 
