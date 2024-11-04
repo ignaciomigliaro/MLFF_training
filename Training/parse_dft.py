@@ -151,7 +151,7 @@ def create_property_lists(atoms_list):
         for atom, relaxed_energy_per_atom in zip(atoms_list, relaxed_energies_per_atom):
             atom.info['relaxed_energy_per_atom'] = relaxed_energy_per_atom
 
-        return(atoms_list,energies_per_atom,forces,stresses,relaxed_energies_per_atom,mag_mom)
+        return(atoms_list,energies_per_atom,total_energy,forces,stresses,relaxed_energies_per_atom,mag_mom)
 
 def remove_outliers_quartile(atoms_list, energy_per_atom, threshold=None):
     q1 = np.percentile(energy_per_atom, 25)
@@ -254,9 +254,10 @@ def atoms_to_struct(atoms_list):
         structures.append(struct) 
     return(structures)
 
-def properties_to_dict(structures, energies_per_atom, forces, stresses, relaxed_energies_per_atom,mag_mom=None):
+def properties_to_dict(structures, total_energy,energies_per_atom, forces, stresses, relaxed_energies_per_atom,mag_mom=None):
     data_dict = {
         'structure': structures,
+        'total_energy': total_energy,
         'energies_per_atom': energies_per_atom,
         'forces': forces,
         'relaxed_energies':relaxed_energies_per_atom,
@@ -273,13 +274,13 @@ def write_pickle(dataset_dict,output):
      with open(output, "wb") as f:
         pickle.dump(dataset_dict, f)
 
-def prepare_data(output, atoms_list, energies_per_atom, forces, stresses,relaxed_energies_per_atom, mag_mom=None):
+def prepare_data(output, atoms_list, energies_per_atom, total_energy,forces, stresses,relaxed_energies_per_atom, mag_mom=None):
     structures = atoms_to_struct(atoms_list)
     
     if mag_mom is not None:
-        dataset_dict = properties_to_dict(structures, energies_per_atom, forces, stresses,relaxed_energies_per_atom,mag_mom)
+        dataset_dict = properties_to_dict(structures, total_energy, energies_per_atom, forces, stresses,relaxed_energies_per_atom,mag_mom)
     else:
-        dataset_dict = properties_to_dict(structures, energies_per_atom, forces,stresses,relaxed_energies_per_atom)
+        dataset_dict = properties_to_dict(structures, total_energy,energies_per_atom, forces,stresses,relaxed_energies_per_atom)
     
     write_pickle(dataset_dict, output)
     print(f"Total number of structures parsed {len(energies_per_atom)}")
@@ -316,7 +317,7 @@ def main():
     atoms_list = filter_atoms_list(atoms_list)
     
     # Initial property extraction
-    atoms_list, energies_per_atom, forces, stresses, relaxed_energies_per_atom, mag_mom = create_property_lists(atoms_list)
+    atoms_list, total_energy,energies_per_atom, forces, stresses, relaxed_energies_per_atom, mag_mom = create_property_lists(atoms_list)
     calculate_stats(relaxed_energies_per_atom if relax_flag else energies_per_atom)
     
     energy = relaxed_energies_per_atom if relax_flag else energies_per_atom
