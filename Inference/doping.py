@@ -63,6 +63,7 @@ def write_qe_file(output_directory, crystal_structure):
         "ecutrho": 200,
         "ecutwfc": 50,
         "vdw_corr": "mbd",
+        "nosym":   True,
         "occupations": "smearing",
         "smearing": 'cold',
         "electron_maxstep": 80,
