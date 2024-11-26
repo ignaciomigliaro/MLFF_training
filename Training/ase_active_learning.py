@@ -40,30 +40,43 @@ def parse_arguments():
         parser.add_argument('--use_cache', type=str, default=None, help='Path to cache file for storing/loading energy and std_dev data')
         return parser.parse_args()
 
-def get_configuration_space(path, stepsize):
+def get_configuration_space(path, stepsize, Z_of_type=None):
     """
     Reads configurations from a file or all files in a directory using ASE's read function.
-
+    
+    For `.lmp` files, a Z_of_type mapping can be optionally provided. If not, the default behavior is used.
+    
     Parameters:
     - path (str): The path to a file or directory. If a directory, all files inside will be read.
     - stepsize (int): The step size for subsampling configurations.
-
+    - Z_of_type (dict[int, int], optional): Mapping from LAMMPS atom types to atomic numbers. 
+      Default behavior is used if not provided.
+    
     Returns:
     - configurations (list): A list of ASE Atoms objects representing different configurations.
     """
     configurations = []
 
     if os.path.isfile(path):
-        # If it's a single file, read all configurations from that file
-        all_atoms = read(path, index=':')
+        # Single file processing
+        if path.endswith('.lmp'):
+            if Z_of_type is None:
+                print(f"Detected LAMMPS file '{path}'. No Z_of_type provided; using default mapping.")
+            all_atoms = read(path, index=':', Z_of_type=Z_of_type)
+        else:
+            all_atoms = read(path, index=':')
         configurations = all_atoms[::stepsize]  # Subsample using the stepsize
     elif os.path.isdir(path):
-        # If it's a directory, iterate through all files
+        # Directory processing
         for filename in os.listdir(path):
             file_path = os.path.join(path, filename)
             if os.path.isfile(file_path):
-                # Read configurations from each file and subsample
-                all_atoms = read(file_path, index=':')
+                if file_path.endswith('.lmp'):
+                    if Z_of_type is None:
+                        print(f"Detected LAMMPS file '{file_path}'. No Z_of_type provided; using default mapping.")
+                    all_atoms = read(file_path, index=':', Z_of_type=Z_of_type)
+                else:
+                    all_atoms = read(file_path, index=':')
                 configurations.extend(all_atoms[::stepsize])  # Subsample using the stepsize
     else:
         raise ValueError(f"The provided path '{path}' is neither a file nor a directory.")
