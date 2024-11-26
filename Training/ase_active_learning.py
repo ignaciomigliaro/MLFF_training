@@ -168,47 +168,69 @@ def calculate_properties(configurations, models, device='cpu'):
 
 def calculate_std_dev(all_configurations, cache_file=None):
     """
-    Calculate the standard deviation of energies for each atom across different models
-    and cache the energies and configurations to a binary file if specified.
+    Calculate the standard deviation of energies for each atom and the mean RMSD of forces
+    for each atom across different models, and cache the energies, forces, and configurations 
+    to a binary file if specified.
 
     Parameters:
     - all_configurations (list): List of configurations, where each configuration is a list of ASE Atoms objects
-                                 with pre-computed energies already set for different models.
-    - cache_file (str): Optional path to a file where the energy values and configurations will be cached.
+                                 with pre-computed energies and forces already set for different models.
+    - cache_file (str): Optional path to a file where the energy values, forces, and configurations will be cached.
 
     Returns:
     - std_dev (list): A list containing the standard deviation of energies for each atom across the models.
+    - mean_rmsd (list): A list containing the mean RMSD of forces for each atom across the models.
     - energy_values (list): A list containing the computed energy values for each atom.
+    - force_values (list): A list containing the computed force values for each atom.
     """
     num_atoms = len(all_configurations[0])  # Assume all configurations have the same number of atoms
-    energies = [[] for _ in range(num_atoms)]
+    energies = [[] for _ in range(num_atoms)]  # To store energies for each atom
+    forces = [[] for _ in range(num_atoms)]  # To store forces for each atom
 
     # Flatten the configurations and atom data for the progress bar
-    total_atoms = len(all_configurations) * num_atoms  # Total number of atom-energy pairs to process
-    progress = tqdm(total=total_atoms, desc="Processing Energies")
+    total_atoms = len(all_configurations) * num_atoms  # Total number of atom-energy/force pairs to process
+    progress = tqdm(total=total_atoms, desc="Processing Energies and Forces")
 
-    # Iterate through each configuration and collect energies for each atom
+    # Iterate through each configuration and collect energies and forces for each atom
     for config in all_configurations:
         for atom in config:
             energy = atom.get_total_energy()  # Access the energy for each atom
+            force = atom.get_forces()  # Access the force for each atom
             energies[config.index(atom)].append(energy)  # Store the energy for the corresponding atom
+            forces[config.index(atom)].append(force)  # Store the force for the corresponding atom
             progress.update(1)  # Update the progress bar after processing each atom
 
-    # Convert to numpy array for standard deviation calculation
+    # Convert energies and forces to numpy arrays for calculations
     energies_array = np.array(energies)
+    forces_array = np.array(forces)
+
+    # Calculate the standard deviation of energies for each atom
     std_dev = np.std(energies_array, axis=1)
 
-    # Cache energy values and configurations to a binary file if specified
+    # Calculate the RMSD between models for each atom (across configurations)
+    mean_rmsd = []
+    for atom_forces in forces_array:
+        rmsd_values = []
+        # Compare each pair of models (forces across different configurations for each atom)
+        for i in range(len(atom_forces)):
+            for j in range(i + 1, len(atom_forces)):
+                diff = atom_forces[i] - atom_forces[j]
+                rmsd_values.append(np.sqrt(np.mean(diff**2)))  # RMSD calculation
+        mean_rmsd.append(np.mean(rmsd_values))  # Mean RMSD for each atom
+
+    # Cache energy values, force values, and configurations to a binary file if specified
     if cache_file:
         try:
             # Prepare data to save
             data_to_save = {
                 'all_configurations': all_configurations,  # Save all configurations
                 'energy_values': energies_array.tolist(),  # Save energies as a list
-                'std_dev': std_dev.tolist()  # Save standard deviations
+                'force_values': forces_array.tolist(),  # Save forces as a list
+                'std_dev': std_dev.tolist(),  # Save standard deviations
+                'mean_rmsd': mean_rmsd  # Save mean RMSD values
             }
             torch.save(data_to_save, cache_file)
-            print(f"Energy values, standard deviations, and configurations saved to {cache_file}.")
+            print(f"Energy values, force values, RMSD, and configurations saved to {cache_file}.")
 
             # Reload in CPU mode (if necessary) and re-save
             cpu_data = torch.load(cache_file, map_location='cpu')
@@ -218,8 +240,7 @@ def calculate_std_dev(all_configurations, cache_file=None):
         except Exception as e:
             print(f"Error processing cache file: {e}")
 
-    return std_dev.tolist(), energies_array.tolist()  # Return both std dev and energy values
-
+    return std_dev.tolist(), mean_rmsd, energies_array.tolist(), forces_array.tolist()  # Return std dev, RMSD, energy, and force values
 
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
