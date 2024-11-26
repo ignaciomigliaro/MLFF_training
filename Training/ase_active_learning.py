@@ -74,6 +74,12 @@ def get_configuration_space(path, stepsize=1, Z_of_type=None, **kwargs):
         atoms_list = read(file_path, index=':')  # Read all configurations from the file
         if Z_of_type:
             atoms_list = map_atomic_numbers(atoms_list, Z_of_type)  # Map atomic numbers if Z_of_type is provided
+        
+        # Set the file path and configuration index in the info dictionary for each Atoms object
+        for i, atoms in enumerate(atoms_list):
+            atoms.info['filepath'] = file_path  # Save the file path in the 'filepath' key of the info dictionary
+            atoms.info['config_index'] = i  # Save the configuration index in the 'config_index' key
+        
         return atoms_list
 
     if os.path.isfile(path):
@@ -89,6 +95,7 @@ def get_configuration_space(path, stepsize=1, Z_of_type=None, **kwargs):
         raise ValueError(f"The provided path '{path}' is neither a file nor a directory.")
 
     return configurations
+
 
 
 def load_models(model_dir, calculator, device='cpu', extension='.pth.tar',):
@@ -176,11 +183,16 @@ def calculate_std_dev(all_configurations, cache_file=None):
     num_atoms = len(all_configurations[0])  # Assume all configurations have the same number of atoms
     energies = [[] for _ in range(num_atoms)]
 
+    # Flatten the configurations and atom data for the progress bar
+    total_atoms = len(all_configurations) * num_atoms  # Total number of atom-energy pairs to process
+    progress = tqdm(total=total_atoms, desc="Processing Energies")
+
     # Iterate through each configuration and collect energies for each atom
-    for config in tqdm(all_configurations, desc="Configurations"):
-        for i, atom in tqdm(enumerate(config), desc="Atoms", leave=False):
+    for config in all_configurations:
+        for atom in config:
             energy = atom.get_total_energy()  # Access the energy for each atom
-            energies[i].append(energy)
+            energies[config.index(atom)].append(energy)  # Store the energy for the corresponding atom
+            progress.update(1)  # Update the progress bar after processing each atom
 
     # Convert to numpy array for standard deviation calculation
     energies_array = np.array(energies)
