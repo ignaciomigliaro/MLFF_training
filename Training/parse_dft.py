@@ -117,9 +117,6 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
 
     return atoms_list
 
-
-
-
 def filter_atoms_list(atoms_list):
     """This is a function to clean the list if there are any missing values"""
     filtered_atoms_list = []

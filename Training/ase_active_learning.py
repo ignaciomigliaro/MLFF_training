@@ -100,15 +100,16 @@ def load_models(model_dir, calculator, device='cpu', extension='.pth.tar',):
                     models.append(loaded_model)
                 except Exception as e:
                     print(f"Failed to load model from {model_path}: {e}")
-    if calculator == 'mace':        
-        models = []
-        extension = '.model'
-        if filename.endswith(extension):
-            model_path = os.path.join(model_dir, filename)
-            try: 
-
+    #TODO
+    #if calculator == 'mace':        
+     #   models = []
+      #  extension = '.model'
+       # if filename.endswith(extension):
+        #    model_path = os.path.join(model_dir, filename)
+         #   try: 
+          #      
         for filename in os.listdir(model_dir):
-    print(f"Successfully loaded {len(models)} models.")
+            print(f"Successfully loaded {len(models)} models.")
     return models
 
 def calculate_properties(configurations, models, device='cpu'):
