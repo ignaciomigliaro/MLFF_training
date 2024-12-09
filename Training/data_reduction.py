@@ -13,6 +13,22 @@ from pymatgen.io.ase import AseAtomsAdaptor
 import argparse
 import numpy as np
 import pickle
+from sklearn.model_selection import train_test_split
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="This is a code to parse for Chgnet and have fast parsing"
+    )
+    parser.add_argument(
+        "input_filepath",
+        help="Directory that contains all of your VASP files"
+    )
+    parser.add_argument(
+         '--verbose',
+         action='store_true',
+         help="If you want to see any error occurring in the parsing process"
+    )
+    return parser.parse_args()
 
 def parse_vasp_dir(filepath, verbose, stepsize=1):
     """This is a function to replace the Chgnet Utils, this is more robust and gives correct energy values"""
@@ -67,6 +83,44 @@ def parse_vasp_dir(filepath, verbose, stepsize=1):
 
     return atoms_list
 
+#TODO def random_sample(atoms_list,percentage=2):
 
+def write_mace(output,atoms_list):
+     train_data, test_data = train_test_split(atoms_list, test_size=0.1, random_state=42)
+     print(f"Your number of data is {len(atoms_list)} training data is {len(train_data)} and test data {len(test_data)}")
+     if '.' in str(output):
+          base,old_extension = str(output).rsplit('.',1)
+          train_file = f"{base}_train.xyz"
+          test_file = f"{base}_test.xyz"
+     else: 
+          train_file = f"{base}_train.xyz"
+          test_file = f"{base}_test.xyz"
+     write(train_file,train_data)
+     write(test_file,test_data)
 
+#TODO write_yaml()
+
+#TODO write_slurm()
+
+#TODO def train_mace(atom_list)
+#call write_yaml
+#call write_slurm 
+#submits slurm
+#returns slurm ID
+
+#TODO check if finished
+
+#TODO inference_mace()
+
+#TODO def calculate_error(dft,mlff):
+
+#TODO def save_data(threshold):
+
+#TODO def evaluate():
+#determines how many failing cases. 
+
+def main():
+    args = parse_args()
+    input = Path(args.input_filepath)
+    atoms_list = parse_vasp_dir(input)
 
