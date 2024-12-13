@@ -43,11 +43,6 @@ def parse_args():
         help="If you want to see any error occurring in the parsing process"
     )
     parser.add_argument(
-        '--slurm_output',
-        default="train_slurm",
-        help="Output path for the generated SLURM script"
-    )
-    parser.add_argument(
         '--job_name',
         default="LLZO",
         help="Name of the SLURM job"
@@ -116,61 +111,22 @@ def write_mace(output, atoms_list):
     write(train_file, train_data)
     write(test_file, test_data)
 
-def generate_yaml_config(output_base):
-    train_file = f"{output_base}_train.xyz"
-    test_file = f"{output_base}_test.xyz"
-    config_dict = {
-        "name": "LLZO",
-        "model_dir": "MACE_models",  # Directory where the model will be saved
-        "log_dir": "MACE_models",  # Log directory for the training process
-        "checkpoints_dir": "MACE_models",  # Checkpoints for model saving
-        "train_file": train_file,
-        "test_file": test_file,
-        "swa": True,
-        "max_num_epochs": 20,
-        "batch_size": 10,
-        "device": "cuda",  # Device for training (can be 'cpu' or 'cuda')
-        "E0s": "average",
-        "valid_fraction": 0.05,
-        "save_cpu": True,
-    }
-    return config_dict
+def submit_job(yaml_config_path, slurm_script_path):
+    """
+    Submit a SLURM job using a provided YAML configuration and SLURM script.
+    """
+    # Check if the files exist
+    if not os.path.exists(yaml_config_path):
+        print(f"Error: YAML configuration file '{yaml_config_path}' not found.")
+        return None
+    if not os.path.exists(slurm_script_path):
+        print(f"Error: SLURM script file '{slurm_script_path}' not found.")
+        return None
 
-def write_yaml_file(output_path, config_dict):
-    with open(output_path, 'w') as yaml_file:
-        yaml.dump(config_dict, yaml_file, default_flow_style=False)
+    print(f"Using YAML configuration file: {yaml_config_path}")
+    print(f"Using SLURM script file: {slurm_script_path}")
 
-
-def write_slurm_script(output_path, yaml_config_path, job_name="LLZO"):
-    slurm_script = f"""#!/bin/bash
-#SBATCH --job-name={job_name}
-#SBATCH --ntasks-per-node=8
-#SBATCH --gres=gpu:1
-#SBATCH --nodes=1
-#SBATCH --mem=100gb
-#SBATCH -p share.gpu
-
-module load cuda11.8/toolkit/11.8.0
-module load MINICONDA/23.1.0_Py3.9
-
-source /cm/shared/apps/MINICONDA/23.1.0_Py3.9/etc/profile.d/conda.sh
-
-conda activate mace2
-python -m mace.cli.run_train --config="{yaml_config_path}"
-"""
-    with open(output_path, "w") as file:
-        file.write(slurm_script)
-
-def generate_and_submit(yaml_config_path, slurm_script_path, job_name="LLZO"):
-    print("Generating YAML configuration...")
-    yaml_config = generate_yaml_config("mace")
-    write_yaml_file(yaml_config_path, yaml_config)
-    print(f"YAML configuration written to: {yaml_config_path}")
-
-    print("Writing SLURM script...")
-    write_slurm_script(slurm_script_path, yaml_config_path, job_name)
-    print(f"SLURM script written to: {slurm_script_path}")
-
+    # Submit the SLURM job
     print("Submitting SLURM job...")
     submit_command = f"sbatch {slurm_script_path}"
     try:
@@ -200,6 +156,22 @@ def is_job_finished(job_id):
     except Exception as e:
         print(f"Unexpected error: {e}")
         return False
+
+def read_yaml_file(yaml_config_path):
+    """
+    Reads the YAML configuration file.
+    """
+    if not os.path.exists(yaml_config_path):
+        print(f"Error: YAML configuration file '{yaml_config_path}' not found.")
+        return None
+    try:
+        with open(yaml_config_path, 'r') as yaml_file:
+            config = yaml.safe_load(yaml_file)
+        print(f"YAML configuration loaded successfully from: {yaml_config_path}")
+        return config
+    except Exception as e:
+        print(f"Error reading YAML configuration file: {e}")
+        return None
 
 def monitor_slurm_job(slurm_job_id, yaml_config):
     """
@@ -262,7 +234,6 @@ def calculate_total_energy(atoms_list, model_path):
     # Return the updated list of atoms along with energy and force information
     return copied_atoms, energies, forces
 
-import numpy as np
 
 def calculate_energy_error(remaining_atoms, model_path, output_file="energy_errors.csv"):
     """
@@ -326,17 +297,14 @@ def main():
     write_mace(base_output, sampled_atoms)
 
     yaml_config_path = f"{base_output}_config.yaml"  # Name of the generated YAML config file
-    slurm_script_path = args.slurm_output
-
-    # Generate the YAML config and write it to file
-    config_dict = generate_yaml_config(base_output)
-    write_yaml_file(yaml_config_path, config_dict)
+    slurm_script_path = f"{base_output}.slurm"
 
     # Submit SLURM job and get the job ID
-    slurm_job_id = generate_and_submit(yaml_config_path, slurm_script_path, args.job_name)
+    slurm_job_id = submit_job(yaml_config_path, slurm_script_path)
 
     if slurm_job_id:
         print(f"Submitted SLURM job with ID {slurm_job_id}. Monitoring for completion...")
+        config_dict = read_yaml_file(yaml_config_path)
         model_path = monitor_slurm_job(slurm_job_id, config_dict)  # Pass YAML config here
 
         # Calculate errors and write to file
