@@ -43,11 +43,6 @@ def parse_args():
         help="If you want to see any error occurring in the parsing process"
     )
     parser.add_argument(
-        '--slurm_output',
-        default="train_slurm",
-        help="Output path for the generated SLURM script"
-    )
-    parser.add_argument(
         '--job_name',
         default="LLZO",
         help="Name of the SLURM job"
@@ -239,7 +234,6 @@ def calculate_total_energy(atoms_list, model_path):
     # Return the updated list of atoms along with energy and force information
     return copied_atoms, energies, forces
 
-import numpy as np
 
 def calculate_energy_error(remaining_atoms, model_path, output_file="energy_errors.csv"):
     """
@@ -303,10 +297,10 @@ def main():
     write_mace(base_output, sampled_atoms)
 
     yaml_config_path = f"{base_output}_config.yaml"  # Name of the generated YAML config file
-    slurm_script_path = args.slurm_output
+    slurm_script_path = f"{base_output}.slurm"
 
     # Submit SLURM job and get the job ID
-    slurm_job_id = submit_job(yaml_config_path, slurm_script_path, args.job_name)
+    slurm_job_id = submit_job(yaml_config_path, slurm_script_path)
 
     if slurm_job_id:
         print(f"Submitted SLURM job with ID {slurm_job_id}. Monitoring for completion...")
