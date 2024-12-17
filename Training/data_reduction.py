@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument(
         '--sampling_percentage',
         type=int,
-        default=100,
+        default=50,
         help="Percentage of configurations to sample (0-100)"
     )
     parser.add_argument(
@@ -235,9 +235,9 @@ def calculate_total_energy(atoms_list, model_path):
     return copied_atoms, energies, forces
 
 
-def calculate_energy_error(remaining_atoms, model_path, output_file="energy_errors.csv"):
+def calculate_energy_error(remaining_atoms, model_path, output_file="energy_errors_per_atom.csv"):
     """
-    Calculate the error between VASP energies and MACE-predicted energies for remaining atoms
+    Calculate the per-atom error between VASP energies and MACE-predicted energies for remaining atoms
     and write the results to a file.
     
     Parameters:
@@ -246,31 +246,83 @@ def calculate_energy_error(remaining_atoms, model_path, output_file="energy_erro
     - output_file: File to save energies and errors.
     
     Returns:
-    - errors: List of absolute errors for each atom.
-    - mae: Mean Absolute Error.
-    - rmse: Root Mean Square Error.
+    - errors_per_atom: List of per-atom errors for each system.
+    - mae_per_atom: Mean Absolute Error per atom.
+    - rmse_per_atom: Root Mean Square Error per atom.
     """
     # Calculate MACE energies
     updated_atoms, mace_energies, _ = calculate_total_energy(remaining_atoms, model_path)
     
-    # Extract VASP energies
+    # Extract VASP energies and number of atoms
     vasp_energies = [atom.info['relaxed_energy'] for atom in remaining_atoms]
+    num_atoms = [len(atom) for atom in remaining_atoms]
     
-    # Calculate errors
-    errors = [abs(vasp - mace) for vasp, mace in zip(vasp_energies, mace_energies)]
-    mae = np.mean(errors)  # Mean Absolute Error
-    rmse = np.sqrt(np.mean(np.square(errors)))  # Root Mean Square Error
+    # Normalize energies by number of atoms
+    vasp_energies_per_atom = [vasp / n for vasp, n in zip(vasp_energies, num_atoms)]
+    mace_energies_per_atom = [mace / n for mace, n in zip(mace_energies, num_atoms)]
+    
+    # Calculate per-atom errors
+    errors_per_atom = [abs(vasp - mace) for vasp, mace in zip(vasp_energies_per_atom, mace_energies_per_atom)]
+    mae_per_atom = np.mean(errors_per_atom)  # Mean Absolute Error per atom
+    rmse_per_atom = np.sqrt(np.mean(np.square(errors_per_atom)))  # Root Mean Square Error per atom
     
     # Write to file
     with open(output_file, "w") as f:
-        f.write("Index,VASP_Energy(eV),MACE_Energy(eV),Error(eV)\n")
-        for idx, (vasp, mace, error) in enumerate(zip(vasp_energies, mace_energies, errors), start=1):
+        f.write("Index,VASP_Energy_per_Atom(eV),MACE_Energy_per_Atom(eV),Error_per_Atom(eV)\n")
+        for idx, (vasp, mace, error) in enumerate(zip(vasp_energies_per_atom, mace_energies_per_atom, errors_per_atom), start=1):
             f.write(f"{idx},{vasp:.6f},{mace:.6f},{error:.6f}\n")
-        f.write(f"\nMean Absolute Error (MAE):,{mae:.6f} eV\n")
-        f.write(f"Root Mean Square Error (RMSE):,{rmse:.6f} eV\n")
+        f.write(f"\nMean Absolute Error per Atom (MAE):,{mae_per_atom:.6f} eV\n")
+        f.write(f"Root Mean Square Error per Atom (RMSE):,{rmse_per_atom:.6f} eV\n")
     
-    print(f"Energies and errors written to {output_file}")
-    return errors, mae, rmse
+    print(f"Energies and errors per atom written to {output_file}")
+    return errors_per_atom, mae_per_atom, rmse_per_atom
+
+def filter_and_resample_failed_cases(errors_per_atom, remaining_atoms, sampled_atoms, threshold=0.04254, resample_percentage=30):
+    """
+    Filters and resamples failed cases based on a threshold error.
+
+    Parameters:
+        errors_per_atom (list): List of energy errors per atom.
+        remaining_atoms (list): List of remaining atoms.
+        sampled_atoms (list): List of sampled atoms.
+        threshold (float): Threshold to identify failed cases.
+        resample_percentage (float): Percentage of failed cases to resample.
+
+    Returns:
+        tuple: Updated sampled_atoms and remaining_atoms.
+    """
+    # Identify failed cases
+    failed_indices = [i for i, error in enumerate(errors_per_atom) if error > threshold]
+    failed_cases = [remaining_atoms[i] for i in failed_indices]
+
+    # Calculate percentage of failed cases
+    if len(errors_per_atom) > 0:
+        failed_percentage = (len(failed_cases) / len(errors_per_atom)) * 100
+        print(f"Percentage of failed cases: {failed_percentage:.2f}%")
+    else:
+        print("No errors to process.")
+        return sampled_atoms, remaining_atoms, 0.0
+
+    # If failed_percentage is less than 10, add all failed cases to sampled_atoms
+    if failed_percentage < 10.0:
+        print(f"Failed percentage is less than 10%, adding all failed cases to sampled_atoms.")
+        sampled_atoms.extend(failed_cases)
+        remaining_atoms = [atom for atom in remaining_atoms if atom not in failed_cases]
+        failed_percentage = 0.0  # No need to resample further
+    else:
+        # Resample 30% of failed cases
+        num_to_resample = int(len(failed_cases) * (resample_percentage / 100))
+        resampled_cases = random.sample(failed_cases, num_to_resample)
+
+        # Update sampled atoms
+        sampled_atoms.extend(resampled_cases)
+
+        # Remaining atoms include non-failed cases and failed cases not resampled
+        remaining_atoms = [atom for i, atom in enumerate(remaining_atoms) if i not in failed_indices or remaining_atoms[i] not in resampled_cases]
+
+        print(f"Resampled {len(resampled_cases)} failed cases and added them to sampled atoms.")
+
+    return sampled_atoms, remaining_atoms, failed_percentage
 
 def main():
     args = parse_args()
@@ -293,32 +345,52 @@ def main():
         energy = atom.info.get('relaxed_energy', 'N/A')
         print(f"Configuration {idx}: Energy = {energy:.6f} eV")
 
-    base_output = "mace"
-    write_mace(base_output, sampled_atoms)
+    iteration = 1
+    failed_percentage = 100.0  # Initialize failed_percentage
 
-    yaml_config_path = f"{base_output}_config.yaml"  # Name of the generated YAML config file
-    slurm_script_path = f"{base_output}.slurm"
+    while failed_percentage > 10.0:
+        print(f"\nIteration {iteration}: Submitting job with current training data...")
 
-    # Submit SLURM job and get the job ID
-    slurm_job_id = submit_job(yaml_config_path, slurm_script_path)
+        base_output = "mace"
+        write_mace(base_output, sampled_atoms)
 
-    if slurm_job_id:
-        print(f"Submitted SLURM job with ID {slurm_job_id}. Monitoring for completion...")
-        config_dict = read_yaml_file(yaml_config_path)
-        model_path = monitor_slurm_job(slurm_job_id, config_dict)  # Pass YAML config here
+        yaml_config_path = f"{base_output}_config.yaml"  # Name of the generated YAML config file
+        slurm_script_path = f"{base_output}.slurm"
 
-        # Calculate errors and write to file
-        if model_path:
-            output_file = "energy_errors.csv"
-            errors, mae, rmse = calculate_energy_error(remaining_atoms, model_path, output_file)
-        
-            print(f"Calculated energy errors for {len(errors)} configurations.")
-            print(f"Mean Absolute Error (MAE): {mae:.6f} eV")
-            print(f"Root Mean Square Error (RMSE): {rmse:.6f} eV")
+        # Submit SLURM job and get the job ID
+        slurm_job_id = submit_job(yaml_config_path, slurm_script_path)
+
+        if slurm_job_id:
+            print(f"Submitted SLURM job with ID {slurm_job_id}. Monitoring for completion...")
+            config_dict = read_yaml_file(yaml_config_path)
+            model_path = monitor_slurm_job(slurm_job_id, config_dict)  # Pass YAML config here
+
+            # Calculate errors and write to file
+            if model_path:
+                output_file = f"energy_errors_iter{iteration}.csv"
+                errors, mae, rmse = calculate_energy_error(remaining_atoms, model_path, output_file)
+            
+                print(f"Calculated energy errors for {len(errors)} configurations.")
+                print(f"Mean Absolute Error (MAE): {mae:.6f} eV")
+                print(f"Root Mean Square Error (RMSE): {rmse:.6f} eV")
+
+                # Filter and resample failed cases
+                sampled_atoms, remaining_atoms, failed_percentage = filter_and_resample_failed_cases(
+                    errors, remaining_atoms, sampled_atoms
+                )
+                print(f"Filtered and resampled failed cases. Failed percentage: {failed_percentage:.2f}%")
+            else:
+                print("Failed to locate trained MACE model. Cannot calculate errors.")
+                return
         else:
-            print("Failed to locate trained MACE model. Cannot calculate errors.")
-    else:
-        print("Failed to submit SLURM job.")
+            print("Failed to submit SLURM job.")
+            return
+
+        iteration += 1
+
+    print("\nTraining process completed. Final dataset prepared.")
+    write_mace("final_output", sampled_atoms)
+    print("Final training data written to final_output.")
 
 if __name__ == "__main__":
     main()
