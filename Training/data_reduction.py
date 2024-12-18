@@ -98,8 +98,8 @@ def parse_vasp_dir(filepath, verbose):
                         atoms_list.append(a)
             except Exception as e:
                 if verbose:
-                    logging.info(f"Error reading file: {file_path}")
-                    logging.info(f"Error details: {e}")
+                    logging.error(f"Error reading file: {file_path}")
+                    logging.error(f"Error details: {e}")
                 continue
             finally:
                 pbar.update(1)
@@ -246,7 +246,7 @@ def calculate_total_energy(atoms_list, model_path,device='cpu'):
         forces.append(force)    # Store forces of each configuration
     
     # Return the updated list of atoms along with energy and force information
-    return copied_atoms, energies, forces
+    return energies, forces
 
 def calculate_energy_error(remaining_atoms, model_path,iteration,device='cpu', output_file="energy_errors_per_atom.csv"):
     """
@@ -264,10 +264,10 @@ def calculate_energy_error(remaining_atoms, model_path,iteration,device='cpu', o
     - rmse_per_atom: Root Mean Square Error per atom.
     """
     # Calculate MACE energies
-    updated_atoms, mace_energies, _ = calculate_total_energy(remaining_atoms, model_path,device)
+    mace_energies, _ = calculate_total_energy(remaining_atoms, model_path,device)
     
     # Extract VASP energies and number of atoms
-    vasp_energies = [atom.info['relaxed_energy'] for atom in remaining_atoms]
+    vasp_energies = [atom.get_total_energy() for atom in remaining_atoms]
     num_atoms = [len(atom) for atom in remaining_atoms]
     
     # Normalize energies by number of atoms
@@ -280,7 +280,7 @@ def calculate_energy_error(remaining_atoms, model_path,iteration,device='cpu', o
     rmse_per_atom = np.sqrt(np.mean(np.square(errors_per_atom)))  # Root Mean Square Error per atom
     
     # Write to file
-    with open(output_file, "w") as f:
+    with open(output_file, "a") as f:
         f.write("Index,Iteration,VASP_Energy_per_Atom(eV),MACE_Energy_per_Atom(eV),Error_per_Atom(eV)\n")
         for idx, (vasp, mace, error) in enumerate(zip(vasp_energies_per_atom, mace_energies_per_atom, errors_per_atom), start=1):
             f.write(f"{idx},{iteration},{vasp:.6f},{mace:.6f},{error:.6f}\n")
@@ -372,6 +372,7 @@ def main():
         slurm_script_path = f"{base_output}.slurm"
 
         # Submit SLURM job and get the job ID
+        logging.info("Submitting Training Job")
         slurm_job_id = submit_job(yaml_config_path, slurm_script_path)
 
         if slurm_job_id:
