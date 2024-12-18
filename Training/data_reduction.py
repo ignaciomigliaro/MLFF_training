@@ -20,7 +20,9 @@ import subprocess
 import time
 import threading
 from mace.calculators import MACECalculator
+import logging
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def parse_args():
@@ -47,6 +49,13 @@ def parse_args():
         default="LLZO",
         help="Name of the SLURM job"
     )
+    parser.add_argument(
+    '--threshold',
+    type=float,
+    default=10.0,
+    help="Threshold for terminating the data reduction training loop"
+    )
+
     return parser.parse_args()
 
 def parse_vasp_dir(filepath, verbose):
@@ -67,7 +76,7 @@ def parse_vasp_dir(filepath, verbose):
                 file_path = pwscf_path
             else:
                 if verbose:
-                    print(f"No valid file ('OUTCAR' or 'pwscf.out') found in {filepath / i}")
+                    logging.info(f"No valid file ('OUTCAR' or 'pwscf.out') found in {filepath / i}")
                 pbar.update(1)
                 continue
             
@@ -84,8 +93,8 @@ def parse_vasp_dir(filepath, verbose):
                         atoms_list.append(a)
             except Exception as e:
                 if verbose:
-                    print(f"Error reading file: {file_path}")
-                    print(f"Error details: {e}")
+                    logging.info(f"Error reading file: {file_path}")
+                    logging.info(f"Error details: {e}")
                 continue
             finally:
                 pbar.update(1)
@@ -102,7 +111,7 @@ def random_sampling(atoms_list, percentage):
 
 def write_mace(output, atoms_list):
     train_data, test_data = train_test_split(atoms_list, test_size=0.1, random_state=42)
-    print(f"Total data: {len(atoms_list)}, Training data: {len(train_data)}, Testing data: {len(test_data)}")
+    logging.info(f"Total data: {len(atoms_list)}, Training data: {len(train_data)}, Testing data: {len(test_data)}")
 
     base = str(output).rsplit('.', 1)[0] if '.' in str(output) else str(output)
     train_file = f"{base}_train.xyz"
@@ -117,25 +126,25 @@ def submit_job(yaml_config_path, slurm_script_path):
     """
     # Check if the files exist
     if not os.path.exists(yaml_config_path):
-        print(f"Error: YAML configuration file '{yaml_config_path}' not found.")
+        logging.error(f"Error: YAML configuration file '{yaml_config_path}' not found.")
         return None
     if not os.path.exists(slurm_script_path):
-        print(f"Error: SLURM script file '{slurm_script_path}' not found.")
+        logging.error(f"Error: SLURM script file '{slurm_script_path}' not found.")
         return None
 
-    print(f"Using YAML configuration file: {yaml_config_path}")
-    print(f"Using SLURM script file: {slurm_script_path}")
+    logging.info(f"Using YAML configuration file: {yaml_config_path}")
+    logging.info(f"Using SLURM script file: {slurm_script_path}")
 
     # Submit the SLURM job
-    print("Submitting SLURM job...")
+    logging.info("Submitting SLURM job...")
     submit_command = f"sbatch {slurm_script_path}"
     try:
         result = subprocess.run(submit_command, shell=True, check=True, capture_output=True, text=True)
         slurm_job_id = result.stdout.split()[-1]
-        print(f"SLURM job submitted successfully with job ID: {slurm_job_id}")
+        logging.info(f"SLURM job submitted successfully with job ID: {slurm_job_id}")
         return slurm_job_id
     except subprocess.CalledProcessError as e:
-        print(f"Error submitting SLURM job: {e}")
+        logging.error(f"Error submitting SLURM job: {e}")
         return None
 
 def is_job_finished(job_id):
@@ -151,10 +160,10 @@ def is_job_finished(job_id):
             return False  # Job is still running
         return True  # Job is finished
     except subprocess.CalledProcessError as e:
-        print(f"Error checking job status: {e}")
+        logging.error(f"Error checking job status: {e}")
         return False
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        logging.error(f"Unexpected error: {e}")
         return False
 
 def read_yaml_file(yaml_config_path):
@@ -162,15 +171,15 @@ def read_yaml_file(yaml_config_path):
     Reads the YAML configuration file.
     """
     if not os.path.exists(yaml_config_path):
-        print(f"Error: YAML configuration file '{yaml_config_path}' not found.")
+        logging.error(f"Error: YAML configuration file '{yaml_config_path}' not found.")
         return None
     try:
         with open(yaml_config_path, 'r') as yaml_file:
             config = yaml.safe_load(yaml_file)
-        print(f"YAML configuration loaded successfully from: {yaml_config_path}")
+        logging.info(f"YAML configuration loaded successfully from: {yaml_config_path}")
         return config
     except Exception as e:
-        print(f"Error reading YAML configuration file: {e}")
+        logging.info(f"Error reading YAML configuration file: {e}")
         return None
 
 def monitor_slurm_job(slurm_job_id, yaml_config):
@@ -178,27 +187,27 @@ def monitor_slurm_job(slurm_job_id, yaml_config):
     Monitor the SLURM job and construct the model path using fixed components from the YAML config.
     """
     while not is_job_finished(slurm_job_id):
-        print(f"SLURM job {slurm_job_id} is still running. Checking again in 60 seconds...")
+        logging.info(f"SLURM job {slurm_job_id} is still running. Checking again in 60 seconds...")
         time.sleep(30)  # Check every 30 seconds
 
-    print(f"SLURM job {slurm_job_id} has finished.")
+    logging.info(f"SLURM job {slurm_job_id} has finished.")
 
     # Extract model information from YAML config
     model_name = yaml_config.get("name", "")
     model_dir = yaml_config.get("model_dir", "")
 
     if not model_name or not model_dir:
-        print("Error: 'name' or 'model_dir' is not defined in the YAML config.")
+        logging.error("Error: 'name' or 'model_dir' is not defined in the YAML config.")
         return None
 
     # Construct model path
     model_path = f"{model_dir}/{model_name}_swa.model"
 
     if Path(model_path).exists():
-        print(f"Constructed model path: {model_path}")
+        logging.info(f"Constructed model path: {model_path}")
         return model_path
     else:
-        print(f"Error: Model path does not exist: {model_path}")
+        logging.error(f"Error: Model path does not exist: {model_path}")
         return None
 
 def calculate_total_energy(atoms_list, model_path):
@@ -209,7 +218,7 @@ def calculate_total_energy(atoms_list, model_path):
     try:
         calc = MACECalculator(model_paths=model_path, device='cpu')
     except Exception as e:
-        print(f"Error initializing MACE calculator: {e}")
+        logging.error(f"Error initializing MACE calculator: {e}")
         return None
     
     # Create a deep copy of the atoms list to avoid modifying the original atoms
@@ -234,8 +243,7 @@ def calculate_total_energy(atoms_list, model_path):
     # Return the updated list of atoms along with energy and force information
     return copied_atoms, energies, forces
 
-
-def calculate_energy_error(remaining_atoms, model_path, output_file="energy_errors_per_atom.csv"):
+def calculate_energy_error(remaining_atoms, model_path,iteration, output_file="energy_errors_per_atom.csv"):
     """
     Calculate the per-atom error between VASP energies and MACE-predicted energies for remaining atoms
     and write the results to a file.
@@ -254,7 +262,7 @@ def calculate_energy_error(remaining_atoms, model_path, output_file="energy_erro
     updated_atoms, mace_energies, _ = calculate_total_energy(remaining_atoms, model_path)
     
     # Extract VASP energies and number of atoms
-    vasp_energies = [atom.info['relaxed_energy'] for atom in remaining_atoms]
+    vasp_energies = [atom.info['mace_energy'] for atom in remaining_atoms]
     num_atoms = [len(atom) for atom in remaining_atoms]
     
     # Normalize energies by number of atoms
@@ -268,13 +276,13 @@ def calculate_energy_error(remaining_atoms, model_path, output_file="energy_erro
     
     # Write to file
     with open(output_file, "w") as f:
-        f.write("Index,VASP_Energy_per_Atom(eV),MACE_Energy_per_Atom(eV),Error_per_Atom(eV)\n")
+        f.write("Index,Iteration,VASP_Energy_per_Atom(eV),MACE_Energy_per_Atom(eV),Error_per_Atom(eV)\n")
         for idx, (vasp, mace, error) in enumerate(zip(vasp_energies_per_atom, mace_energies_per_atom, errors_per_atom), start=1):
-            f.write(f"{idx},{vasp:.6f},{mace:.6f},{error:.6f}\n")
+            f.write(f"{idx},{iteration},{vasp:.6f},{mace:.6f},{error:.6f}\n")
         f.write(f"\nMean Absolute Error per Atom (MAE):,{mae_per_atom:.6f} eV\n")
         f.write(f"Root Mean Square Error per Atom (RMSE):,{rmse_per_atom:.6f} eV\n")
     
-    print(f"Energies and errors per atom written to {output_file}")
+    logging.info(f"Energies and errors per atom written to {output_file}")
     return errors_per_atom, mae_per_atom, rmse_per_atom
 
 def filter_and_resample_failed_cases(errors_per_atom, remaining_atoms, sampled_atoms, threshold=0.04254, resample_percentage=30):
@@ -298,14 +306,14 @@ def filter_and_resample_failed_cases(errors_per_atom, remaining_atoms, sampled_a
     # Calculate percentage of failed cases
     if len(errors_per_atom) > 0:
         failed_percentage = (len(failed_cases) / len(errors_per_atom)) * 100
-        print(f"Percentage of failed cases: {failed_percentage:.2f}%")
+        logging.info(f"Percentage of failed cases: {failed_percentage:.2f}%")
     else:
-        print("No errors to process.")
+        logging.info("No errors to process.")
         return sampled_atoms, remaining_atoms, 0.0
 
     # If failed_percentage is less than 10, add all failed cases to sampled_atoms
     if failed_percentage < 10.0:
-        print(f"Failed percentage is less than 10%, adding all failed cases to sampled_atoms.")
+        logging.info(f"Failed percentage is less than 10%, adding all failed cases to sampled_atoms.")
         sampled_atoms.extend(failed_cases)
         remaining_atoms = [atom for atom in remaining_atoms if atom not in failed_cases]
         failed_percentage = 0.0  # No need to resample further
@@ -320,7 +328,7 @@ def filter_and_resample_failed_cases(errors_per_atom, remaining_atoms, sampled_a
         # Remaining atoms include non-failed cases and failed cases not resampled
         remaining_atoms = [atom for i, atom in enumerate(remaining_atoms) if i not in failed_indices or remaining_atoms[i] not in resampled_cases]
 
-        print(f"Resampled {len(resampled_cases)} failed cases and added them to sampled atoms.")
+        logging.info(f"Resampled {len(resampled_cases)} failed cases and added them to sampled atoms.")
 
     return sampled_atoms, remaining_atoms, failed_percentage
 
@@ -334,22 +342,22 @@ def main():
     atoms_list = parse_vasp_dir(input_filepath, verbose=args.verbose)
 
     if not atoms_list:
-        print("No valid configurations found.")
+        logging.error("No valid configurations found.")
         return
 
     # Perform random sampling
     sampled_atoms, remaining_atoms = random_sampling(atoms_list, args.sampling_percentage)
 
-    print(f"Randomly sampled {len(sampled_atoms)} configurations:")
+    logging.info(f"Randomly sampled {len(sampled_atoms)} configurations:")
     for idx, atom in enumerate(sampled_atoms, start=1):
         energy = atom.info.get('relaxed_energy', 'N/A')
-        print(f"Configuration {idx}: Energy = {energy:.6f} eV")
+        logging.info(f"Configuration {idx}: Energy = {energy:.6f} eV")
 
     iteration = 1
     failed_percentage = 100.0  # Initialize failed_percentage
-
-    while failed_percentage > 10.0:
-        print(f"\nIteration {iteration}: Submitting job with current training data...")
+    threshold = args.threshold
+    while failed_percentage > threshold:
+        logging.info(f"\nIteration {iteration}: Submitting job with current training data...")
 
         base_output = "mace"
         write_mace(base_output, sampled_atoms)
@@ -361,36 +369,36 @@ def main():
         slurm_job_id = submit_job(yaml_config_path, slurm_script_path)
 
         if slurm_job_id:
-            print(f"Submitted SLURM job with ID {slurm_job_id}. Monitoring for completion...")
+            logging.info(f"Submitted SLURM job with ID {slurm_job_id}. Monitoring for completion...")
             config_dict = read_yaml_file(yaml_config_path)
             model_path = monitor_slurm_job(slurm_job_id, config_dict)  # Pass YAML config here
 
             # Calculate errors and write to file
             if model_path:
-                output_file = f"energy_errors_iter{iteration}.csv"
+                output_file = f"energy_errors_iter.csv"
                 errors, mae, rmse = calculate_energy_error(remaining_atoms, model_path, output_file)
             
-                print(f"Calculated energy errors for {len(errors)} configurations.")
-                print(f"Mean Absolute Error (MAE): {mae:.6f} eV")
-                print(f"Root Mean Square Error (RMSE): {rmse:.6f} eV")
+                logging.info(f"Calculated energy errors for {len(errors)} configurations.")
+                logging.info(f"Mean Absolute Error (MAE): {mae:.6f} eV")
+                logging.info(f"Root Mean Square Error (RMSE): {rmse:.6f} eV")
 
                 # Filter and resample failed cases
                 sampled_atoms, remaining_atoms, failed_percentage = filter_and_resample_failed_cases(
                     errors, remaining_atoms, sampled_atoms
                 )
-                print(f"Filtered and resampled failed cases. Failed percentage: {failed_percentage:.2f}%")
+                logging.info(f"Filtered and resampled failed cases. Failed percentage: {failed_percentage:.2f}%")
             else:
-                print("Failed to locate trained MACE model. Cannot calculate errors.")
+                logging.error("Failed to locate trained MACE model. Cannot calculate errors.")
                 return
         else:
-            print("Failed to submit SLURM job.")
+            logging.error("Failed to submit SLURM job.")
             return
 
         iteration += 1
 
-    print("\nTraining process completed. Final dataset prepared.")
+    logging.info("\nTraining process completed. Final dataset prepared.")
     write_mace("final_output", sampled_atoms)
-    print("Final training data written to final_output.")
+    logging.info("Final training data written to final_output.")
 
 if __name__ == "__main__":
     main()
