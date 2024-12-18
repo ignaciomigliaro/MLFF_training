@@ -267,7 +267,7 @@ def calculate_energy_error(remaining_atoms, model_path,iteration,device='cpu', o
     updated_atoms, mace_energies, _ = calculate_total_energy(remaining_atoms, model_path,device)
     
     # Extract VASP energies and number of atoms
-    vasp_energies = [atom.info['mace_energy'] for atom in remaining_atoms]
+    vasp_energies = [atom.info['relaxed_energy'] for atom in remaining_atoms]
     num_atoms = [len(atom) for atom in remaining_atoms]
     
     # Normalize energies by number of atoms
