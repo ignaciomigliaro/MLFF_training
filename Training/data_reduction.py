@@ -351,7 +351,8 @@ def main():
     logging.info(f"Randomly sampled {len(sampled_atoms)} configurations:")
     for idx, atom in enumerate(sampled_atoms, start=1):
         energy = atom.info.get('relaxed_energy', 'N/A')
-        logging.info(f"Configuration {idx}: Energy = {energy:.6f} eV")
+        if args.verbose:
+            logging.info(f"Configuration {idx}: Energy = {energy:.6f} eV")
 
     iteration = 1
     failed_percentage = 100.0  # Initialize failed_percentage
