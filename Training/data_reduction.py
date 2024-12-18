@@ -376,7 +376,7 @@ def main():
             # Calculate errors and write to file
             if model_path:
                 output_file = f"energy_errors_iter.csv"
-                errors, mae, rmse = calculate_energy_error(remaining_atoms, model_path, output_file)
+                errors, mae, rmse = calculate_energy_error(remaining_atoms, model_path,iteration,output_file)
             
                 logging.info(f"Calculated energy errors for {len(errors)} configurations.")
                 logging.info(f"Mean Absolute Error (MAE): {mae:.6f} eV")
