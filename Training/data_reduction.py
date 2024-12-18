@@ -55,7 +55,12 @@ def parse_args():
     default=10.0,
     help="Threshold for terminating the data reduction training loop"
     )
-
+    parser.add_argument(
+    '--device',
+    type=str,
+    default='cpu',
+    help="Device to run training and inference runs (Default = 'cpu')"
+    )
     return parser.parse_args()
 
 def parse_vasp_dir(filepath, verbose):
@@ -210,13 +215,13 @@ def monitor_slurm_job(slurm_job_id, yaml_config):
         logging.error(f"Error: Model path does not exist: {model_path}")
         return None
 
-def calculate_total_energy(atoms_list, model_path):
+def calculate_total_energy(atoms_list, model_path,device='cpu'):
     """
     Calculates total energy and forces for each configuration using the MACE model.
     """
     # Initialize MACE calculator
     try:
-        calc = MACECalculator(model_paths=model_path, device='cpu')
+        calc = MACECalculator(model_paths=model_path, device=device)
     except Exception as e:
         logging.error(f"Error initializing MACE calculator: {e}")
         return None
@@ -243,7 +248,7 @@ def calculate_total_energy(atoms_list, model_path):
     # Return the updated list of atoms along with energy and force information
     return copied_atoms, energies, forces
 
-def calculate_energy_error(remaining_atoms, model_path,iteration, output_file="energy_errors_per_atom.csv"):
+def calculate_energy_error(remaining_atoms, model_path,iteration,device='cpu', output_file="energy_errors_per_atom.csv"):
     """
     Calculate the per-atom error between VASP energies and MACE-predicted energies for remaining atoms
     and write the results to a file.
@@ -259,7 +264,7 @@ def calculate_energy_error(remaining_atoms, model_path,iteration, output_file="e
     - rmse_per_atom: Root Mean Square Error per atom.
     """
     # Calculate MACE energies
-    updated_atoms, mace_energies, _ = calculate_total_energy(remaining_atoms, model_path)
+    updated_atoms, mace_energies, _ = calculate_total_energy(remaining_atoms, model_path,device)
     
     # Extract VASP energies and number of atoms
     vasp_energies = [atom.info['mace_energy'] for atom in remaining_atoms]
@@ -377,7 +382,7 @@ def main():
             # Calculate errors and write to file
             if model_path:
                 output_file = f"energy_errors_iter.csv"
-                errors, mae, rmse = calculate_energy_error(remaining_atoms, model_path,iteration,output_file)
+                errors, mae, rmse = calculate_energy_error(remaining_atoms, model_path,iteration,args.device,output_file)
             
                 logging.info(f"Calculated energy errors for {len(errors)} configurations.")
                 logging.info(f"Mean Absolute Error (MAE): {mae:.6f} eV")
