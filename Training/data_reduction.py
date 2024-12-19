@@ -58,6 +58,7 @@ def parse_args():
     parser.add_argument(
     '--threshold',
     type=float,
+    default=0.04254,
     help="Error threshold for failure cases."
     )
     parser.add_argument(
@@ -289,8 +290,8 @@ def calculate_energy_error(remaining_atoms, model_path,iteration,device='cpu', o
         f.write("Index,Iteration,VASP_Energy_per_Atom(eV),MACE_Energy_per_Atom(eV),Error_per_Atom(eV)\n")
         for idx, (vasp, mace, error) in enumerate(zip(vasp_energies_per_atom, mace_energies_per_atom, errors_per_atom), start=1):
             f.write(f"{idx},{iteration},{vasp:.6f},{mace:.6f},{error:.6f}\n")
-        f.write(f"\nMean Absolute Error per Atom (MAE):,{mae_per_atom:.6f} eV\n")
-        f.write(f"Root Mean Square Error per Atom (RMSE):,{rmse_per_atom:.6f} eV\n")
+        f.write(f"\nMean Absolute Error per Atom (MAE):,{mae_per_atom:.6f}\n")
+        f.write(f"Root Mean Square Error per Atom (RMSE):,{rmse_per_atom:.6f}\n")
     
     logging.info(f"Energies and errors per atom written to {output_file}")
     return errors_per_atom, mae_per_atom, rmse_per_atom
@@ -349,7 +350,7 @@ def main():
     threshold = args.threshold
     percent_cutoff = args.percent_cutoff
     sampling_percentage = args.sampling_percentage
-    
+
     if not input_filepath.exists() or not input_filepath.is_dir():
         raise FileNotFoundError(f"The input filepath '{input_filepath}' is not a valid directory.")
 
