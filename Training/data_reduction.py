@@ -50,10 +50,15 @@ def parse_args():
         help="Name of the SLURM job"
     )
     parser.add_argument(
-    '--threshold',
+    '--percent_cutoff',
     type=float,
     default=10.0,
-    help="Threshold for terminating the data reduction training loop"
+    help="Percentage of failure cases for terminating data reduction training loop."
+    )
+    parser.add_argument(
+    '--threshold',
+    type=float,
+    help="Error threshold for failure cases."
     )
     parser.add_argument(
     '--device',
@@ -341,6 +346,10 @@ def main():
     args = parse_args()
 
     input_filepath = Path(args.input_filepath)
+    threshold = args.threshold
+    percent_cutoff = args.percent_cutoff
+    sampling_percentage = args.sampling_percentage
+    
     if not input_filepath.exists() or not input_filepath.is_dir():
         raise FileNotFoundError(f"The input filepath '{input_filepath}' is not a valid directory.")
 
@@ -361,10 +370,10 @@ def main():
 
     iteration = 1
     failed_percentage = 100.0  # Initialize failed_percentage
-    threshold = args.threshold
-    while failed_percentage > threshold:
+    while failed_percentage > percent_cutoff:
         logging.info(f"\nIteration {iteration}: Submitting job with current training data...")
-
+        if iteration == 1:
+            write_mace('initial',sampled_atoms)
         base_output = "mace"
         write_mace(base_output, sampled_atoms)
 
@@ -391,7 +400,7 @@ def main():
 
                 # Filter and resample failed cases
                 sampled_atoms, remaining_atoms, failed_percentage = filter_and_resample_failed_cases(
-                    errors, remaining_atoms, sampled_atoms
+                    errors, remaining_atoms, sampled_atoms,threshold,sampling_percentage
                 )
                 logging.info(f"Filtered and resampled failed cases. Failed percentage: {failed_percentage:.2f}%")
             else:
@@ -404,8 +413,9 @@ def main():
         iteration += 1
 
     logging.info("\nTraining process completed. Final dataset prepared.")
-    write_mace("final_output", sampled_atoms)
+    write_mace(base_output, sampled_atoms)
     logging.info("Final training data written to final_output.")
+    slurm_job_id = submit_job(yaml_config_path, slurm_script_path)
 
 if __name__ == "__main__":
     main()
