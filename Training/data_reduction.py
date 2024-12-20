@@ -212,7 +212,7 @@ def monitor_slurm_job(slurm_job_id, yaml_config):
         return None
 
     # Construct model path
-    model_path = f"{model_dir}/{model_name}_swa.model"
+    model_path = f"{model_dir}/{model_name}__run-123_stagetwo.model"
 
     if Path(model_path).exists():
         logging.info(f"Constructed model path: {model_path}")
