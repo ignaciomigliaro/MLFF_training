@@ -7,7 +7,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from chgnet.utils import parse_vasp_dir
 import warnings
 from pymatgen.io.ase import AseAtomsAdaptor
 import argparse
