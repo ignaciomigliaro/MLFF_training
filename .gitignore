@@ -43,3 +43,4 @@ Inference/__pycache__/inference_functions.cpython-312.pyc
 Training/config.yaml
 Untitled.ipynb
 stepsize.p
+Training/active_learning.ipynb
