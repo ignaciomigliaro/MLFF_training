@@ -103,4 +103,8 @@ def main():
         
         # Run the MD simulation
         NPT_calc(current_conf, temp=current_target_temp, calc=calc, fname=fname, s=1, T=n_steps)
+
+
+if __name__ == '__main__':
+    6 main()
         
