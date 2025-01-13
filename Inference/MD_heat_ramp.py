@@ -106,5 +106,5 @@ def main():
 
 
 if __name__ == '__main__':
-    6 main()
+    main()
         
