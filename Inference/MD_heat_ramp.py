@@ -40,8 +40,10 @@ def parse_arguments():
     return parser.parse_args()
 
 def NPT_calc(init_conf, temp, calc, fname, s, T,timestep):
+    traj = f"{os.path.splitext(fname)[0]}.traj"
+    log = f"{os.path.splitext(fname)[0]}.log"
     init_conf.calc = calc
-    dyn = NPT(init_conf, timestep*units.fs, temperature_K=temp, trajectory='npt_600k_n50_T10ps.traj',logfile='npt.log',externalstress=1.0*units.bar,ttime=20*units.fs,pfactor=2e6*units.fs**2,append_trajectory=True)
+    dyn = NPT(init_conf, timestep*units.fs, temperature_K=temp, trajectory=traj,logfile=log,externalstress=1.0*units.bar,ttime=20*units.fs,pfactor=2e6*units.fs**2,append_trajectory=True)
 
     def write_frame(temp):
             dyn.atoms.info['energy_mace'] = dyn.atoms.get_potential_energy()
@@ -51,7 +53,6 @@ def NPT_calc(init_conf, temp, calc, fname, s, T,timestep):
             temperature.append(dyn.atoms.get_temperature())
             energies.append(dyn.atoms.get_potential_energy()/len(dyn.atoms))
 
-    dyn.attach(lambda: write_frame(current_target_temp), interval=s)
     t0 = time.time()
     dyn.run(T)
     t1 = time.time()
@@ -67,7 +68,6 @@ def NPT_calc(init_conf, temp, calc, fname, s, T,timestep):
         energies.append(dyn.atoms.get_potential_energy() / len(dyn.atoms))
 
 
-    dyn.attach(lambda: write_frame(current_target_temp), interval=s)
     t0 = time.time()
     dyn.run(T)
     t1 = time.time()
