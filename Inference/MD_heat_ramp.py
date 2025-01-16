@@ -46,29 +46,20 @@ def NPT_calc(init_conf, temp, calc, fname, s, T,timestep):
     init_conf.calc = calc
     dyn = NPT(init_conf, timestep*units.fs, temperature_K=temp, trajectory=traj,logfile=log,externalstress=1.0*units.bar,ttime=20*units.fs,pfactor=2e6*units.fs**2,append_trajectory=True)
 
+    time_fs = []
+    temperature = []
+    energies = []
+    
     def write_frame(temp):
             dyn.atoms.info['energy_mace'] = dyn.atoms.get_potential_energy()
             dyn.atoms.arrays['force_mace'] = dyn.atoms.calc.get_forces()
             dyn.atoms.write(fname, append=True)
             time_fs.append(dyn.get_time()/units.fs)
+            time_fs.append(dyn.get_time()/units.fs)
             temperature.append(dyn.atoms.get_temperature())
             energies.append(dyn.atoms.get_potential_energy()/len(dyn.atoms))
 
-    t0 = time.time()
-    dyn.run(T)
-    t1 = time.time()
-    print("MD finished in {0:.2f} minutes!".format((t1-t0)/60))
-
-
-    def write_frame(temp):
-        # Update energy and temperature data for plotting
-        dyn.atoms.info['energy_mace'] = dyn.atoms.get_potential_energy()
-        dyn.atoms.arrays['force_mace'] = dyn.atoms.calc.get_forces()
-        time_fs.append(dyn.get_time() / units.fs)
-        temperature.append(dyn.atoms.get_temperature())
-        energies.append(dyn.atoms.get_potential_energy() / len(dyn.atoms))
-
-
+    dyn.attach(lambda: write_frame(temp), interval=s)
     t0 = time.time()
     dyn.run(T)
     t1 = time.time()
