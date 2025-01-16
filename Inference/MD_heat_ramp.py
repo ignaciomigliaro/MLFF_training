@@ -7,9 +7,6 @@ from ase.md.velocitydistribution import Stationary, ZeroRotation, MaxwellBoltzma
 import os
 import time
 import numpy as np
-import pylab as pl
-from IPython import display
-np.random.seed(701) #just making sure the MD failure is reproducible
 from mace.calculators import mace_off
 import argparse
 from mace.calculators import MACECalculator
