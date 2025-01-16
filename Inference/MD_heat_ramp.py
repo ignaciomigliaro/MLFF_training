@@ -37,6 +37,7 @@ def parse_arguments():
     parser.add_argument("--nstep",type=int,required=True,help="Number of steps in MD simulation")
     parser.add_argument("--model_path,",type=str,help='')
     parser.add_argument("--ensemble",type=str,default="npt",choices=['nve,nvt,npt'],help="Ensemble used for ensamble run (NVE | NPT | NVE)")
+    parser.add_argument("--equilibration_steps",type=int,default=1000,help="Number of equilibration steps") 
     return parser.parse_args()
 
 def NPT_calc(init_conf, temp, calc, fname, s, T,timestep):
@@ -76,7 +77,7 @@ def NPT_calc(init_conf, temp, calc, fname, s, T,timestep):
 def ramp_temperature(start_temp,end_temp,step,n_steps):
         temp = start_temp + (end_temp - start_temp) * step / n_steps
         return temp
-
+        
 def main():
     print('starting')
     args = parse_arguments()
@@ -89,6 +90,8 @@ def main():
     input_file = args.input_file
     output_file = args.output_file
     model_path = None
+    equilibration_steps = args.equilibration_steps
+    
     print(f"Starting temperature at {start_temp}K ending in {end_temp}K in {temp_steps}. MD simualtion is run at {timestep} in {n_steps}")
     #if not model path is given use the MACE-off as default
     
@@ -111,6 +114,16 @@ def main():
         fname = output_file
         print(f"Running MD calculation with {current_target_temp}K")
         
+        # NVT Equilibration
+        nvt = NVTBerendsen(
+            atoms=current_conf,
+            timestep=1.0 * units.fs,
+            temperature_K=current_target_temp,
+            taut=100.0 * units.fs
+        )
+        nvt.run(equilibration_steps)
+
+
         # Run the MD simulation
         NPT_calc(current_conf, temp=current_target_temp, calc=calc, fname=fname, s=1, T=n_steps,timestep=timestep)
 
