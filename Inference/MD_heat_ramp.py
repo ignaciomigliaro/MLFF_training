@@ -91,7 +91,7 @@ def main():
     output_file = args.output_file
     model_path = None
     equilibration_steps = args.equilibration_steps
-    
+
     print(f"Starting temperature at {start_temp}K ending in {end_temp}K in {temp_steps}. MD simualtion is run at {timestep} in {n_steps}")
     #if not model path is given use the MACE-off as default
     
@@ -119,7 +119,9 @@ def main():
             atoms=current_conf,
             timestep=1.0 * units.fs,
             temperature_K=current_target_temp,
-            taut=100.0 * units.fs
+            taut=100.0 * units.fs,
+            trajectory = f"{os.path.splitext(fname)[0]}_equilibration.traj",
+            append_trajectory=True
         )
         nvt.run(equilibration_steps)
 
