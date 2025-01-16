@@ -1,21 +1,17 @@
-from mace.calculators import mace_mp
 from ase import build
 from ase.io import read,write
 import numpy as np
 from pymatgen.core import Structure
 from pathlib import Path 
-from chgnet.model import CHGNet
 from ase import Atom, Atoms
 import os 
 from pymatgen.io.ase import AseAtomsAdaptor
-from chgnet.model import StructOptimizer
 import crystal_toolkit.components as ctc
 import plotly.graph_objects as go
 from crystal_toolkit.settings import SETTINGS
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output
 from pymatgen.core import Structure
-import argparse
 from tqdm import tqdm
 import contextlib
 import pandas as pd
@@ -23,17 +19,11 @@ import matplotlib.pyplot as plt
 from dash import Dash, dcc, html
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output
-from pymatgen.core.structure import Structure
-import crystal_toolkit.components as ctc
-from crystal_toolkit.settings import SETTINGS
 import warnings 
 import seaborn as sns
-from pymatgen.core.structure import Structure
 from pymatgen.analysis.local_env import VoronoiNN
-from mace.calculators import MACECalculator
 import torch
-from scipy.stats import spearmanr
-from scipy.stats import pearsonr
+from scipy.stats import spearmanr,pearsonr
 from scipy import stats
 
 
@@ -288,10 +278,14 @@ def get_sorted_energies_dataframe(grouped_atoms_sorted, mace_flag=None,mlff_opt 
 #Calls all inference functions and calculates energies for all of the test set
 def inference(atoms_list, opt_atoms_list, model_path=None, mace_flag=None, mlff_opt=None, calc_correlation=False):
     if mace_flag:
+        from mace.calculators import mace_mp
+        from mace.calculators import MACECalculator
+
         print('Running MACE')
         atoms_list = mace_inference(atoms_list,model_path)
         opt_atoms_list = mace_inference(opt_atoms_list,model_path)
     else:
+        from chgnet.model import StructOptimizer
         print('Running CHgnet')
         #Run CHGNet inference
         atoms_list = chgnet_inference(atoms_list,model_path)
@@ -305,7 +299,6 @@ def inference(atoms_list, opt_atoms_list, model_path=None, mace_flag=None, mlff_
     df=get_sorted_energies_dataframe(grouped_atoms_sorted,mace_flag,mlff_opt=mlff_opt,calc_correlation=calc_correlation)
     return(df)
 #Plots the mean absolute error of the energies for each model
-import matplotlib.pyplot as plt
 
 def plot_mae_comparison(dataframes, dataframe_names, savefig=None):
     chgnet_MAE = []

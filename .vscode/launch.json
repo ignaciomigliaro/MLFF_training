@@ -1,0 +1,26 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "pythonPath": "/home/ignacio/anaconda3/envs/mace/bin/python",
+            "args": [
+                "--start_temp", "300",
+                "--final_temp", "600",
+                "--temp_steps", "10",
+                "--device", "cuda",
+                "--timestep", "1",
+                "--nstep", "1000",
+                "~/Documents/polymer_upcycle/structure_3_dopes_1/POSCAR",
+                "test.out"
+            ]
+        }
+    ]
+}
