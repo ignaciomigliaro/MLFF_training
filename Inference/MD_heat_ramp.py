@@ -35,14 +35,17 @@ def parse_arguments():
     parser.add_argument("--model_path,",type=str,help='')
     parser.add_argument("--ensemble",type=str,default="npt",choices=['nve,nvt,npt'],help="Ensemble used for ensamble run (NVE | NPT | NVE)")
     parser.add_argument("--equilibration_steps",type=int,default=1000,help="Number of equilibration steps") 
+    parser.add_argument("--npt_type",type=str,default="nose",choices=['nose','berendsen'],help="Type of NPT thermostat to use (nose | hoover)")
     return parser.parse_args()
 
-def NPT_calc(init_conf, temp, calc, fname, s, T,timestep):
+def NPT_calc(init_conf, temp, calc, fname, s, T,timestep,npt_type):
     traj = f"{os.path.splitext(fname)[0]}.traj"
     log = f"{os.path.splitext(fname)[0]}.log"
     init_conf.calc = calc
-    dyn = NPT(init_conf, timestep*units.fs, temperature_K=temp, trajectory=traj,logfile=log,externalstress=1.0*units.bar,ttime=20*units.fs,pfactor=2e6*units.fs**2,append_trajectory=True)
-
+    if npt_type == "nose":
+        dyn = NPT(init_conf, timestep*units.fs, temperature_K=temp, trajectory=traj,logfile=log,externalstress=1.0*units.bar,ttime=20*units.fs,pfactor=2e6*units.fs**2,append_trajectory=True)
+    if npt_type == "berendsen":
+        dyn = NPTBerendsen(init_conf, timestep*units.fs, temperature_K=temp, taut=100.0*units.fs, pressure=1.0*units.bar,trajectory=traj,logfile=log,append_trajectory=True)
     time_fs = []
     temperature = []
     energies = []
@@ -78,6 +81,7 @@ def main():
     input_file = args.input_file
     output_file = args.output_file
     model_path = None
+    NPT_type = args.npt_type
     equilibration_steps = args.equilibration_steps
 
     print(f"Starting temperature at {start_temp}K ending in {end_temp}K in {temp_steps}. MD simualtion is run at {timestep} in {n_steps}")
@@ -115,7 +119,7 @@ def main():
 
 
         # Run the MD simulation
-        NPT_calc(current_conf, temp=current_target_temp, calc=calc, fname=fname, s=1, T=n_steps,timestep=timestep)
+        NPT_calc(current_conf, temp=current_target_temp, calc=calc, fname=fname, s=10, T=n_steps,timestep=timestep)
 
 
 if __name__ == '__main__':
