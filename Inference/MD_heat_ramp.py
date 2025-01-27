@@ -45,8 +45,9 @@ def NPT_calc(init_conf, temp, calc, fname, s, T,timestep,npt_type):
     init_conf.calc = calc
     if npt_type == "nose":
         dyn = NPT(init_conf, timestep*units.fs, temperature_K=temp, trajectory=traj,logfile=log,externalstress=1.0*units.bar,ttime=20*units.fs,pfactor=2e6*units.fs**2,append_trajectory=True)
+
     if npt_type == "berendsen":
-        dyn = NPTBerendsen(init_conf, timestep*units.fs, temperature_K=temp, pressure_au = 1.01325 * units.bar ,trajectory=traj,logfile=log,append_trajectory=True)
+        dyn = NPTBerendsen(init_conf, timestep*units.fs, temperature_K=temp, pressure_au = 1.01325 * units.bar , compressibility_au=4.57e-5 / units.bar,trajectory=traj,logfile=log,append_trajectory=True)
     time_fs = []
     temperature = []
     energies = []
