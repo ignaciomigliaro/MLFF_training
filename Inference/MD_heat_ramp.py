@@ -13,6 +13,7 @@ from mace.calculators import MACECalculator
 import matplotlib.pyplot as plt
 from ase.md.npt import NPT
 from ase.md.nvtberendsen import NVTBerendsen
+from ase.md.nptberendsen import NPTBerendsen
 import warnings
 import logging
 from pathlib import Path
