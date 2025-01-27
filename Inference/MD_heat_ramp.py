@@ -119,7 +119,7 @@ def main():
 
 
         # Run the MD simulation
-        NPT_calc(current_conf, temp=current_target_temp, calc=calc, fname=fname, s=10, T=n_steps,timestep=timestep)
+        NPT_calc(current_conf, temp=current_target_temp, calc=calc, fname=fname, s=10, T=n_steps,timestep=timestep,npt_type=NPT_type)
 
 
 if __name__ == '__main__':
