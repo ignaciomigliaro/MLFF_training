@@ -13,6 +13,7 @@ import warnings
 from ase.io.lammpsdata import read_lammps_data
 from mace.calculators import MACECalculator
 import logging
+import pdb
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,6 +45,7 @@ def parse_arguments():
         parser.add_argument("--plot_std_dev", action="store_true", help="Flag to plot the distribution of standard deviations.")
         parser.add_argument("--output_dir", type=str, default="qe_outputs", help="Directory to save Quantum Espresso files.")
         parser.add_argument('--use_cache', type=str, default=None, help='Path to cache file for storing/loading energy and std_dev data')
+        parser.add_argument('--eval_criteria', type=str, choices=['energy','forces'],default='energy', help='Evaluation criteria for filtering structures choices are energy or forces')
         return parser.parse_args()
 
 def map_atomic_numbers(atoms_list, Z_of_type):
@@ -144,7 +146,7 @@ def load_models(model_dir, calculator='chgnet', device='cuda', extension='.pth.t
         logging.info(f"Successfully loaded {len(models)} models.")
     return models
 
-def calculate_properties(configurations, models, device='cuda',calculator='chgnet'):
+def assign_calculator(configurations, models, device='cuda',calculator='chgnet'):
     """
     Create a list of configurations for each model, assign calculators, and optionally cache the results.
 
@@ -165,9 +167,10 @@ def calculate_properties(configurations, models, device='cuda',calculator='chgne
             for atoms in config_copy:
                 atoms.calc = calculator
             all_configurations.append(config_copy)
+    
     if calculator == 'mace':
         for model in models:
-            calculator = MACECalculator(model, use_device=device)
+            calculator = MACECalculator(model_paths=[model], device=device)
             config_copy = [atoms.copy() for atoms in configurations]
             for atoms in config_copy:
                 atoms.calc = calculator
@@ -206,27 +209,24 @@ def calculate_std_dev(all_configurations, cache_file=None):
         for atom in config:
             energy = atom.get_total_energy()  # Access the energy for each atom
             force = atom.get_forces()  # Access the force for each atom
-            energies[config.index(atom)].append(energy)  # Store the energy for the corresponding atom
-            forces[config.index(atom)].append(force)  # Store the force for the corresponding atom
+            atom_index = config.index(atom)
+            energies[atom_index].append(energy)  # Store the energy for the corresponding atom
+            forces[atom_index].append(np.array(force).flatten())  # Store the force for the corresponding atom
             progress.update(1)  # Update the progress bar after processing each atom
 
-    # Log the shapes of the forces
-    for i, force_list in enumerate(forces):
-        logging.info(f"Shape of forces[{i}]: {[f.shape for f in force_list]}")
-
-    # Ensure all forces have consistent dimensions
-    max_length = max(len(f) for force_list in forces for f in force_list)
-    for i, force_list in enumerate(forces):
-        for j, force in enumerate(force_list):
-            if len(force) < max_length:
-                forces[i][j] = np.pad(force, (0, max_length - len(force)), 'constant')
+    # Ensure all force arrays have the same shape
+    max_length = max(len(f) for atom_forces in forces for f in atom_forces)
+    for atom_forces in forces:
+        for i in range(len(atom_forces)):
+            if len(atom_forces[i]) < max_length:
+                atom_forces[i] = np.pad(atom_forces[i], (0, max_length - len(atom_forces[i])), 'constant')
 
     # Convert energies and forces to numpy arrays for calculations
     energies_array = np.array(energies)
     forces_array = np.array(forces)
 
     # Calculate the standard deviation of energies for each atom
-    std_dev = np.std(energies_array, axis=1)
+    std_dev = np.std(energies_array, axis=1).tolist()
 
     # Calculate the absolute deviation of flattened forces between configurations for each atom
     mean_abs_deviation = []
@@ -247,7 +247,7 @@ def calculate_std_dev(all_configurations, cache_file=None):
                 'all_configurations': all_configurations,  # Save all configurations
                 'energy_values': energies_array.tolist(),  # Save energies as a list
                 'force_values': forces_array.tolist(),  # Save forces as a list
-                'std_dev': std_dev.tolist(),  # Save standard deviations
+                'std_dev': std_dev,  # Save standard deviations
                 'mean_rmsd': mean_abs_deviation  # Save mean RMSD values
             }
             torch.save(data_to_save, cache_file)
@@ -261,14 +261,12 @@ def calculate_std_dev(all_configurations, cache_file=None):
         except Exception as e:
             logging.error(f"Error processing cache file: {e}")
 
-    return std_dev.tolist(), mean_abs_deviation, energies_array.tolist(), forces_array.tolist()  # Return std dev, RMSD, energy, and force values
+    return std_dev, mean_abs_deviation, energies_array.tolist(), forces_array.tolist()  # Return std dev, RMSD, energy, and force values
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
-
-
     """
     Filters structures based on the normalized standard deviation.
-    Includes structures with normalized deviation equal to or above the specified threshold.
+    Includes structures with normalized deviation less than or equal to the specified threshold.
 
     Parameters:
     - atoms_lists (list of list of ASE Atoms): List containing multiple atoms lists for each model.
@@ -281,8 +279,7 @@ def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, 
     - filtered_atoms_list (list of ASE Atoms): List of filtered structures.
     """
     # Compute the normalized standard deviation
-    std_dev_normalized = [std / len(atoms_lists[0]) for std in std_dev]
-    # Determine the threshold
+    std_dev_normalized = std_dev
     if user_threshold is not None:
         threshold = float(user_threshold)
         logging.info(f"User-defined threshold for filtering: {threshold}")
@@ -293,8 +290,9 @@ def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, 
     # Filter structures based on the chosen threshold
     filtered_atoms_list = []
     for i, norm_dev in enumerate(std_dev_normalized):
-        if norm_dev >= threshold:  # Include structures with deviation >= threshold
+        if norm_dev <= threshold:  # Include structures with deviation <= threshold
             filtered_atoms_list.append(atoms_lists[0][i])
+    logging.info(f"Number of structures below threshold: {len(filtered_atoms_list)}")
     return filtered_atoms_list
 
 def plot_std_dev_distribution(std_devs):
@@ -368,16 +366,20 @@ def main():
     # Parse command-line arguments
     args = parse_arguments()
     device = args.device
+    calculator = args.calculator
+    logging.info(f"Using calculator: {calculator}")
     logging.info(f"Device selected: {device}")
     # Create the output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
 
-    logging.info(torch.__version__)
-    logging.info(torch.cuda.is_available())    
+    logging.info(f"This is the current Pytorch version you are using {torch.__version__}")
+    logging.info(f" Is cuda available? {torch.cuda.is_available()}")    
+
+    if torch.cuda.is_available():
+        logging.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+    
     # Get the configuration space based on the provided file or directory
     atoms_list = get_configuration_space(args.filepath, args.stepsize)
-
-    # Load models from the specified directory
     models = load_models(args.model_dir, calculator=args.calculator, device=device)
 
     # Print the number of configurations loaded
@@ -385,27 +387,28 @@ def main():
     logging.info(f"Models loaded: {models}")
 
     # Calculate energies and standard deviation, using cache if specified
-    atoms_list = calculate_properties(
+    atoms_list = assign_calculator(
         configurations=atoms_list,
         models=models,
         device=device,
-        calculator=args.calculator
-         # Pass the user-defined cache file path or None if not provided
+        calculator = calculator
+        # Pass the user-defined cache file path or None if not provided
     )
     logging.info(f"Running calculations on {len(atoms_list)} configurations.")
-    std_dev= calculate_std_dev(atoms_list,cache_file=args.use_cache)
+    std_dev, mean_abs_deviation, energies_array, forces_array = calculate_std_dev(atoms_list,cache_file=args.use_cache)
     logging.info(f"Standard deviations calculated for {len(std_dev)} atoms.")
-    # Plot the distribution of standard deviations if the flag is set
+    
+        # Plot the distribution of standard deviations if the flag is set
     if args.plot_std_dev:
         plot_std_dev_distribution(std_dev)
 
     # Use user-defined threshold to filter high-deviation structures
+    
     filtered_atoms_list = filter_high_deviation_structures(
         atoms_lists=atoms_list,
         std_dev=std_dev,
         user_threshold=args.threshold
     )
-    
     logging.info(f"Number of filtered structures: {len(filtered_atoms_list)}")
 
     # Write input files for the filtered structures based on DFT software choice
@@ -415,10 +418,11 @@ def main():
         os.makedirs(structure_output_dir, exist_ok=True)
 
         # Write the appropriate input file based on the chosen DFT software
-        if args.dft_software.lower() == 'qe':
-            write_qe_file(structure_output_dir, atoms)
-        else:
-            logging.error(f"Unsupported DFT software: {args.dft_software}")
+        if args.dft_sofware:
+            if args.dft_software.lower() == 'qe':
+                write_qe_file(structure_output_dir, atoms)
+            else:
+                logging.error(f"Unsupported DFT software: {args.dft_software}")
 
 if __name__ == "__main__":
     main()
