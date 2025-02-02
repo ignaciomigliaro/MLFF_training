@@ -46,6 +46,7 @@ def parse_arguments():
         parser.add_argument("--output_dir", type=str, default="qe_outputs", help="Directory to save Quantum Espresso files.")
         parser.add_argument('--use_cache', type=str, default=None, help='Path to cache file for storing/loading energy and std_dev data')
         parser.add_argument('--eval_criteria', type=str, choices=['energy','forces'],default='energy', help='Evaluation criteria for filtering structures choices are energy or forces')
+        parser.add_argument('--lower_threshold', type=float, default=None, help='Lower threshold for filtering structures based on forces (eV/Angstrom) or energy (eV)')
         return parser.parse_args()
 
 def map_atomic_numbers(atoms_list, Z_of_type):
@@ -263,37 +264,47 @@ def calculate_std_dev(all_configurations, cache_file=None):
 
     return std_dev, mean_abs_deviation, energies_array.tolist(), forces_array.tolist()  # Return std dev, RMSD, energy, and force values
 
-def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, percentile=90):
+def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, lower_threshold=None, percentile=90):
     """
     Filters structures based on the normalized standard deviation.
-    Includes structures with normalized deviation less than or equal to the specified threshold.
+    Includes structures with normalized deviation within the specified threshold range.
 
     Parameters:
     - atoms_lists (list of list of ASE Atoms): List containing multiple atoms lists for each model.
     - energies (list of list of floats): List containing energies for each model.
     - std_dev (list of floats): Standard deviation values.
-    - user_threshold (float, optional): User-defined threshold for filtering. If None, percentile-based threshold is used.
+    - user_threshold (float, optional): User-defined upper threshold for filtering. If None, percentile-based threshold is used.
+    - lower_threshold (float, optional): User-defined lower threshold for filtering. If None, no lower threshold is applied.
     - percentile (int): Percentile threshold for filtering if no user threshold is provided.
 
     Returns:
     - filtered_atoms_list (list of ASE Atoms): List of filtered structures.
+    - filtered_std_dev (list of floats): List of standard deviation values corresponding to the filtered structures.
     """
     # Compute the normalized standard deviation
     std_dev_normalized = std_dev
     if user_threshold is not None:
-        threshold = float(user_threshold)
-        logging.info(f"User-defined threshold for filtering: {threshold}")
+        upper_threshold = float(user_threshold)
+        logging.info(f"User-defined upper threshold for filtering: {upper_threshold}")
     else:
-        threshold = np.percentile(std_dev_normalized, percentile)
-        logging.info(f"Threshold for filtering (95th percentile): {threshold}")
+        upper_threshold = np.percentile(std_dev_normalized, percentile)
+        logging.info(f"Threshold for filtering (95th percentile): {upper_threshold}")
 
-    # Filter structures based on the chosen threshold
+    if lower_threshold is not None:
+        lower_threshold = float(lower_threshold)
+        logging.info(f"User-defined lower threshold for filtering: {lower_threshold}")
+    else:
+        lower_threshold = float('-inf')  # No lower threshold
+
+    # Filter structures based on the chosen thresholds
     filtered_atoms_list = []
+    filtered_std_dev = []
     for i, norm_dev in enumerate(std_dev_normalized):
-        if norm_dev <= threshold:  # Include structures with deviation <= threshold
+        if lower_threshold <= norm_dev <= upper_threshold:  # Include structures within the threshold range
             filtered_atoms_list.append(atoms_lists[0][i])
-    logging.info(f"Number of structures below threshold: {len(filtered_atoms_list)}")
-    return filtered_atoms_list
+            filtered_std_dev.append(norm_dev)
+    logging.info(f"Number of structures within threshold range: {len(filtered_atoms_list)}")
+    return filtered_atoms_list, filtered_std_dev
 
 def plot_std_dev_distribution(std_devs):
     """
@@ -403,12 +414,22 @@ def main():
         plot_std_dev_distribution(std_dev)
 
     # Use user-defined threshold to filter high-deviation structures
-    
-    filtered_atoms_list = filter_high_deviation_structures(
-        atoms_lists=atoms_list,
-        std_dev=std_dev,
-        user_threshold=args.threshold
-    )
+    if args.eval_criteria == 'energy':
+        logging.info(f"Filtering structures based on energy standard deviation.")
+        filtered_atoms_list, filtered_std_dev = filter_high_deviation_structures(
+            atoms_lists=atoms_list,
+            std_dev=std_dev,
+            user_threshold=args.threshold,
+            lower_threshold=args.lower_threshold
+            )
+    elif args.eval_criteria == 'forces':
+        logging.info(f"Filtering structures based on forces standard deviation.")
+        filtered_atoms_list, filtered_std_dev = filter_high_deviation_structures(
+            atoms_lists=atoms_list,
+            std_dev=mean_abs_deviation,
+            user_threshold=args.threshold,
+            lower_threshold=args.lower_threshold
+            )
     logging.info(f"Number of filtered structures: {len(filtered_atoms_list)}")
 
     # Write input files for the filtered structures based on DFT software choice
@@ -418,7 +439,7 @@ def main():
         os.makedirs(structure_output_dir, exist_ok=True)
 
         # Write the appropriate input file based on the chosen DFT software
-        if args.dft_sofware:
+        if args.dft_software:
             if args.dft_software.lower() == 'qe':
                 write_qe_file(structure_output_dir, atoms)
             else:
