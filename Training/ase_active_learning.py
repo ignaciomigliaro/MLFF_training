@@ -251,13 +251,18 @@ def calculate_std_dev(all_configurations, cache_file=None):
                 'std_dev': std_dev,  # Save standard deviations
                 'mean_rmsd': mean_abs_deviation  # Save mean RMSD values
             }
-            torch.save(data_to_save, cache_file)
-            logging.info(f"Energy values, force values, RMSD, and configurations saved to {cache_file}.")
-
+            
+            # Save data using pickle
+            with open(cache_file, 'wb') as f:
+                pickle.dump(data_to_save, f)
+            logging.info(f"Energy values, force values, RMSD, and configurations saved to {cache_file} using pickle.")
+            
             # Reload in CPU mode (if necessary) and re-save
-            cpu_data = torch.load(cache_file, map_location='cpu')
-            torch.save(cpu_data, cache_file)
-            logging.info(f"Data re-saved to {cache_file} in CPU-compatible format.")
+            with open(cache_file, 'rb') as f:
+                cpu_data = pickle.load(f)
+            with open(cache_file, 'wb') as f:
+                pickle.dump(cpu_data, f)
+            logging.info(f"Data re-saved to {cache_file} in CPU-compatible format using pickle.")
 
         except Exception as e:
             logging.error(f"Error processing cache file: {e}")
