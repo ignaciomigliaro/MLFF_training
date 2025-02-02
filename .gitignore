@@ -44,3 +44,8 @@ Training/config.yaml
 Untitled.ipynb
 stepsize.p
 Training/active_learning.ipynb
+Training/__pycache__/ase_active_learning.cpython-310.pyc
+.gitignore
+Training/__pycache__/ase_active_learning.cpython-312.pyc
+Training/__pycache__/ase_active_learning.cpython-310.pyc
+Training/active_learning.ipynb
