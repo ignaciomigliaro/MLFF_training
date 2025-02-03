@@ -35,7 +35,7 @@ def parse_arguments():
     parser.add_argument("--nstep",type=int,required=True,help="Number of steps in MD simulation")
     parser.add_argument("--model_path,",type=str,help='')
     parser.add_argument("--ensemble",type=str,default="npt",choices=['nve,nvt,npt'],help="Ensemble used for ensamble run (NVE | NPT | NVE)")
-    parser.add_argument("--equilibration_steps",type=int,default=1000,help="Number of equilibration steps") 
+    parser.add_argument("--equilibration_steps",type=int,default=10000,help="Number of equilibration steps") 
     parser.add_argument("--npt_type",type=str,default="nose",choices=['nose','berendsen'],help="Type of NPT thermostat to use (nose | hoover)")
     return parser.parse_args()
 
