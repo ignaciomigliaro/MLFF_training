@@ -265,7 +265,6 @@ def calculate_std_dev(all_configurations, cache_file=None):
         for forces in zip(*atom_forces):
             std_dev = np.std(forces)
             std_dev_forces.append(std_dev)
-            print(std_dev)  # Print the standard deviation
 
     # Calculate the absolute deviation of flattened forces between configurations for each atom
     mean_abs_deviation = []
