@@ -180,6 +180,35 @@ def assign_calculator(configurations, models, device='cuda',calculator='chgnet')
     # Add other calculators as needed
     return all_configurations
 
+def save_to_cpu_pickle(data_to_save, cache_file):
+    """
+    Saves data to a pickle file in a CPU-compatible format by ensuring all tensors are moved to the CPU.
+
+    Parameters:
+    - data_to_save (dict): Dictionary containing data to be saved.
+    - cache_file (str): Path to the file where data will be saved.
+    """
+    try:
+        # Move all tensors in `data_to_save` to CPU before saving
+        cpu_data = {}
+        for key, value in data_to_save.items():
+            if isinstance(value, torch.Tensor):  
+                cpu_data[key] = value.cpu()
+            elif isinstance(value, list):  
+                cpu_data[key] = [v.cpu() if isinstance(v, torch.Tensor) else v for v in value]
+            elif isinstance(value, dict):  
+                cpu_data[key] = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in value.items()}
+            else:
+                cpu_data[key] = value  
+
+        # Save the CPU-compatible data
+        with open(cache_file, 'wb') as f:
+            pickle.dump(cpu_data, f)
+        logging.info(f"Data saved to {cache_file} in CPU-compatible format.")
+
+    except Exception as e:
+        logging.error(f"Error saving CPU-compatible pickle file: {e}")
+
 def calculate_std_dev(all_configurations, cache_file=None):
     """
     Calculate the standard deviation of energies for each atom and the mean RMSD of forces
@@ -229,6 +258,15 @@ def calculate_std_dev(all_configurations, cache_file=None):
     # Calculate the standard deviation of energies for each atom
     std_dev = np.std(energies_array, axis=1).tolist()
 
+    # Calculate the standard deviation of forces between configurations for each atom
+    std_dev_forces = []
+    for atom_forces in forces_array:
+        # Use zip to iterate over corresponding forces from different configurations
+        for forces in zip(*atom_forces):
+            std_dev = np.std(forces)
+            std_dev_forces.append(std_dev)
+            print(std_dev)  # Print the standard deviation
+
     # Calculate the absolute deviation of flattened forces between configurations for each atom
     mean_abs_deviation = []
     for atom_forces in forces_array:
@@ -242,32 +280,17 @@ def calculate_std_dev(all_configurations, cache_file=None):
 
     # Cache energy values, force values, and configurations to a binary file if specified
     if cache_file:
-        try:
-            # Prepare data to save
-            data_to_save = {
-                'all_configurations': all_configurations,  # Save all configurations
-                'energy_values': energies_array.tolist(),  # Save energies as a list
-                'force_values': forces_array.tolist(),  # Save forces as a list
-                'std_dev': std_dev,  # Save standard deviations
-                'mean_rmsd': mean_abs_deviation  # Save mean RMSD values
-            }
-            
-            # Save data using pickle
-            with open(cache_file, 'wb') as f:
-                pickle.dump(data_to_save, f)
-            logging.info(f"Energy values, force values, RMSD, and configurations saved to {cache_file} using pickle.")
-            
-            # Reload in CPU mode (if necessary) and re-save
-            with open(cache_file, 'rb') as f:
-                cpu_data = pickle.load(f)
-            with open(cache_file, 'wb') as f:
-                pickle.dump(cpu_data, f)
-            logging.info(f"Data re-saved to {cache_file} in CPU-compatible format using pickle.")
-
-        except Exception as e:
-            logging.error(f"Error processing cache file: {e}")
+        #'all_configurations': all_configurations,  # Save all configurations
+        data_to_save = {
+            'energy_values': energies_array.tolist(),  # Save energies as a list
+            'force_values': forces_array.tolist(),  # Save forces as a list
+            'std_dev': std_dev,  # Save standard deviations
+            'mean_rmsd': mean_abs_deviation  # Save mean RMSD values
+        }
+        save_to_cpu_pickle(data_to_save, cache_file)  # Save in CPU-compatible format
 
     return std_dev, mean_abs_deviation, energies_array.tolist(), forces_array.tolist()  # Return std dev, RMSD, energy, and force values
+
 
 def filter_high_deviation_structures(atoms_lists, std_dev, user_threshold=None, lower_threshold=None, percentile=90):
     """
