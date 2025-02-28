@@ -307,32 +307,31 @@ def main():
     mace_flag = args.mace
     stepsize = args.stepsize  # Capture stepsize from parsed arguments
 
-
     atoms_list = parse_vasp_dir(filepath, verbose_flag, stepsize=stepsize)
     atoms_list = filter_atoms_list(atoms_list)
     
     # Initial property extraction
-    atoms_list, total_energy,energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
+    atoms_list, total_energy, energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
     calculate_stats(energies_per_atom)
-    
-    
+
+    # Save original energies before filtering
+    energies_per_atom2 = energies_per_atom.copy()
+
     if filter_flag:
-        energies_per_atom2 = energy
-        atoms_list = remove_outliers_quartile(atoms_list, energy)
-        atoms_list, total_energy,energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
+        atoms_list = remove_outliers_quartile(atoms_list, energies_per_atom)
+        atoms_list, total_energy, energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
         calculate_stats(energies_per_atom)
-        energy = energies_per_atom
 
     if graph_flag:
         if filter_flag:
-                graph_filtered_distribution(energies_per_atom2, energies_per_atom)
+            graph_filtered_distribution(energies_per_atom2, energies_per_atom)  # Now energies_per_atom2 is defined
         else:
-                graph_distribution(energies_per_atom)
+            graph_distribution(energies_per_atom)
 
     if mace_flag: 
         prepare_mace(output, atoms_list)
     else:
-        prepare_data(output, atoms_list, total_energy,energy, forces, stresses, mag_mom)
+        prepare_data(output, atoms_list, total_energy, energies_per_atom, forces, stresses, mag_mom)
 
 if __name__ == '__main__':
     main()
