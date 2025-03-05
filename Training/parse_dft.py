@@ -118,8 +118,11 @@ def create_property_lists(atoms_list):
         energies_per_atom = [energy / num_atoms for energy, num_atoms in zip(total_energy, num_atoms_list)]
         std_energy_per_atom = np.std(energies_per_atom)
 
+      # Add total energy to atom.info as energy_dft and rename forces as forces_dft
+        for atom, energy in zip(atoms_list, total_energy):
+            atom.info['energy_dft'] = energy
+            atom.arrays['forces_dft'] = atom.get_forces() 
         
-
         return(atoms_list,energies_per_atom,total_energy,forces,stresses,mag_mom)
 
 def remove_outliers_quartile(atoms_list, energy_per_atom, threshold=None):
