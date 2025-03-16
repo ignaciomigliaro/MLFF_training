@@ -282,21 +282,45 @@ def prepare_data(output, atoms_list, energies_per_atom, total_energy,forces, str
     print(f"Total number of structures parsed {len(energies_per_atom)}")
     print('DONE!')
 
-def prepare_mace(output,atoms_list):
-     train_data, test_data = train_test_split(atoms_list, test_size=0.1, random_state=42)
-     print(f"Your number of data is {len(atoms_list)} training data is {len(train_data)} and test data {len(test_data)}")
-     if '.' in str(output):
-          base,old_extension = str(output).rsplit('.',1)
-          train_file = f"{base}_train.xyz"
-          test_file = f"{base}_test.xyz"
-     else: 
-          train_file = f"{base}_train.xyz"
-          test_file = f"{base}_test.xyz"
-     write(train_file,train_data)
-     write(test_file,test_data)
+def prepare_mace(output, atoms_list):
+    """
+    Prepares data for MACE training by splitting the dataset into training and test sets,
+    ensuring the atom counts are correct, and writing the data to XYZ files.
+    """
+    # Check atom counts before proceeding
+    corrected_atoms_list = []
+    for i, atoms in enumerate(atoms_list):
+        expected_atoms = atoms.get_global_number_of_atoms()
+        actual_atoms = len(atoms)
+        
+        if expected_atoms != actual_atoms:
+            print(f"Warning: Frame {i} has {actual_atoms} atoms but expected {expected_atoms}. Skipping...")
+            continue  # Skip inconsistent frames
+        
+        corrected_atoms_list.append(atoms)
 
-     
+    # Ensure we have enough valid frames to split
+    if len(corrected_atoms_list) < 2:
+        raise ValueError("Not enough valid structures to create training and test sets.")
 
+    # Split data into training and test sets
+    train_data, test_data = train_test_split(corrected_atoms_list, test_size=0.1, random_state=42)
+
+    print(f"Final dataset: {len(corrected_atoms_list)} structures")
+    print(f"Training data: {len(train_data)}, Test data: {len(test_data)}")
+
+    # Determine output file names
+    base = str(output).rsplit('.', 1)[0] if '.' in str(output) else str(output)
+    train_file = f"{base}_train.xyz"
+    test_file = f"{base}_test.xyz"
+
+    # Write to XYZ files
+    write(train_file, train_data)
+    write(test_file, test_data)
+
+    print(f"XYZ files written: {train_file}, {test_file}")
+
+    
 def main(): 
     args = parse_args()
     output = Path(args.output)
