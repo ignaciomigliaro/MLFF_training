@@ -19,96 +19,68 @@ from ase.calculators.calculator import PropertyNotImplementedError
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="This is a code to parse for Chgnet and have fast parsing"
-    )
-    parser.add_argument(
-        "input_filepath",
-        help="Directory that contains all of your VASP files"
-    )
-    parser.add_argument(
-        "--graph",
-        action="store_true",
-        help="If specified, generate a graph of the Variability of the data"
-    )
-    parser.add_argument(
-        "--filter",
-        action="store_true",
-        help="If specified, remove outliers in the data"
-    )
-    
-    parser.add_argument(
-        "output",
-        help="If you want to only parse  energy and have structures predict  energies"
-    )
-    parser.add_argument(
-         '--mace',
-         action='store_true',
-         help="If you want to parse for MACE and create an XYZ file instead of a pickle file"
-    )
-    parser.add_argument(
-         '--verbose',
-         action='store_true',
-         help="If you want to see any error occurring in the parsing process"
+    parser = argparse.ArgumentParser(description="Parse VASP directories and process atomic data")
+    parser.add_argument('--input_filepaths', nargs='+', required=True, help="Paths to input directories")
+    parser.add_argument('--output', required=True, help="Output directory")
+    parser.add_argument('--filter', action='store_true', help="Apply outlier filtering")
+    parser.add_argument('--graph', action='store_true', help="Generate graphs")
+    parser.add_argument('--verbose', action='store_true', help="Enable verbose output")
+    parser.add_argument('--mace', action='store_true', help="Prepare MACE-compatible data")
+    parser.add_argument('--stepsize', type=int, default=1, help="Sampling step size")
 
-    )
-    parser.add_argument(
-        '--stepsize',
-        type=int,
-        default=1,  # Default value is 1 so it behaves like before if not provided
-        help="Step size for selecting atoms every nth step (default: 1)"
-    )
     return parser.parse_args()
 
-def parse_vasp_dir(filepath, verbose, stepsize=1):
-    """This is a function to replace the Chgnet Utils, this is more robust and gives correct energy values"""
+def parse_vasp_dir(filepaths, verbose, stepsize=1):
+    """Parse multiple VASP directories and extract relevant atomic structures."""
     warnings.filterwarnings('ignore')
     atoms_list = []
     len_list = []
-    total_iterations = len(os.listdir(filepath))
+
+    # Determine total iterations across all directories
+    total_iterations = sum(len(os.listdir(fp)) for fp in filepaths)
 
     with tqdm(total=total_iterations, desc='Processing') as pbar:
-        for i in os.listdir(filepath):
-            dir = Path(i)
-            outcar_path = filepath / i / 'OUTCAR'
-            pwscf_path = filepath / i / 'pwscf.out'
-            
-            if outcar_path.exists():
-                file_path = outcar_path
-            elif pwscf_path.exists():
-                file_path = pwscf_path
-            else:
-                if verbose:
-                    print(f"No valid file ('OUTCAR' or 'pwscf.out') found in {filepath / i}")
-                pbar.update(1)
-                continue
-            
-            try:
-                # Read the entire file (OUTCAR or pwscf.out)
-                single_file_atom = read(file_path, index=':')
-                last_energy = read(file_path)
-                last_energy = last_energy.get_total_energy()
-                
-                # Convert single_file_atom to a list
-                all_steps = list(single_file_atom)
-                len_list.append(len(all_steps))
-                
-                # Sample atoms from all_steps based on stepsize
-                sampled_atoms = all_steps[::stepsize]
+        for filepath in filepaths:
+            for i in os.listdir(filepath):
+                dir = Path(i)
+                outcar_path = filepath / i / 'OUTCAR'
+                pwscf_path = filepath / i / 'pwscf.out'
 
-                # Process sampled atoms
-                for a in sampled_atoms:
-                    if a.get_total_energy() < 0:
-                        a.info['file'] = filepath.joinpath(i)
-                        atoms_list.append(a)
-                        e = a.get_total_energy()
-            except Exception as e:
-                if verbose:
-                    print(f"Error reading file: {file_path}")
-                    print(f"Error details: {e}")
-                continue
-            finally:
-                pbar.update(1)
+                if outcar_path.exists():
+                    file_path = outcar_path
+                elif pwscf_path.exists():
+                    file_path = pwscf_path
+                else:
+                    if verbose:
+                        print(f"No valid file ('OUTCAR' or 'pwscf.out') found in {filepath / i}")
+                    pbar.update(1)
+                    continue
+
+                try:
+                    # Read the entire file (OUTCAR or pwscf.out)
+                    single_file_atom = read(file_path, index=':')
+                    last_energy = read(file_path)
+                    last_energy = last_energy.get_total_energy()
+
+                    # Convert single_file_atom to a list
+                    all_steps = list(single_file_atom)
+                    len_list.append(len(all_steps))
+
+                    # Sample atoms from all_steps based on stepsize
+                    sampled_atoms = all_steps[::stepsize]
+
+                    # Process sampled atoms
+                    for a in sampled_atoms:
+                        if a.get_total_energy() < 0:
+                            a.info['file'] = filepath.joinpath(i)
+                            atoms_list.append(a)
+                except Exception as e:
+                    if verbose:
+                        print(f"Error reading file: {file_path}")
+                        print(f"Error details: {e}")
+                    continue
+                finally:
+                    pbar.update(1)
 
     return atoms_list
 
@@ -146,8 +118,11 @@ def create_property_lists(atoms_list):
         energies_per_atom = [energy / num_atoms for energy, num_atoms in zip(total_energy, num_atoms_list)]
         std_energy_per_atom = np.std(energies_per_atom)
 
+      # Add total energy to atom.info as energy_dft and rename forces as forces_dft
+        for atom, energy in zip(atoms_list, total_energy):
+            atom.info['energy_dft'] = energy
+            atom.arrays['forces_dft'] = atom.get_forces() 
         
-
         return(atoms_list,energies_per_atom,total_energy,forces,stresses,mag_mom)
 
 def remove_outliers_quartile(atoms_list, energy_per_atom, threshold=None):
@@ -324,39 +299,39 @@ def prepare_mace(output, atoms_list):
 def main(): 
     args = parse_args()
     output = Path(args.output)
-    filepath = Path(args.input_filepath)
+    filepaths = [Path(fp) for fp in args.input_filepaths]  # Accept multiple paths
     filter_flag = args.filter
     graph_flag = args.graph
     verbose_flag = args.verbose
     mace_flag = args.mace
-    stepsize = args.stepsize  # Capture stepsize from parsed arguments
+    stepsize = args.stepsize  
 
-
-    atoms_list = parse_vasp_dir(filepath, verbose_flag, stepsize=stepsize)
+    # Parse all provided directories
+    atoms_list = parse_vasp_dir(filepaths, verbose_flag, stepsize=stepsize)
     atoms_list = filter_atoms_list(atoms_list)
-    
+
     # Initial property extraction
-    atoms_list, total_energy,energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
+    atoms_list, total_energy, energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
     calculate_stats(energies_per_atom)
-    
-    
+
+    # Save original energies before filtering
+    energies_per_atom2 = energies_per_atom.copy()
+
     if filter_flag:
-        energies_per_atom2 = energy
-        atoms_list = remove_outliers_quartile(atoms_list, energy)
-        atoms_list, total_energy,energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
+        atoms_list = remove_outliers_quartile(atoms_list, energies_per_atom)
+        atoms_list, total_energy, energies_per_atom, forces, stresses, mag_mom = create_property_lists(atoms_list)
         calculate_stats(energies_per_atom)
-        energy = energies_per_atom
 
     if graph_flag:
         if filter_flag:
-                graph_filtered_distribution(energies_per_atom2, energies_per_atom)
+            graph_filtered_distribution(energies_per_atom2, energies_per_atom)
         else:
-                graph_distribution(energies_per_atom)
+            graph_distribution(energies_per_atom)
 
     if mace_flag: 
         prepare_mace(output, atoms_list)
     else:
-        prepare_data(output, atoms_list, total_energy,energy, forces, stresses, mag_mom)
+        prepare_data(output, atoms_list, total_energy, energies_per_atom, forces, stresses, mag_mom)
 
 if __name__ == '__main__':
     main()
