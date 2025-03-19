@@ -350,7 +350,7 @@ def plot_std_dev_distribution(std_devs):
     plt.grid(True)
     plt.show()
 
-def create_orca_input_from_atoms(atoms_list, template, output_dir='./'):
+def write_orca_file(atoms_list, template, output_dir='./'):
     """
     Generates ORCA input files from a list of ASE Atoms objects.
 
@@ -397,7 +397,7 @@ def create_orca_input_from_atoms(atoms_list, template, output_dir='./'):
 
     return input_files, xyz_files
         
-def write_qe_inputs_from_atoms(atoms_list, output_dir="./"):
+def write_qe_file(atoms_list, output_dir="./"):
     """
     Generates Quantum ESPRESSO input files from a list of ASE Atoms objects.
 
@@ -536,7 +536,7 @@ def main():
             if args.dft_software.lower() == 'qe':
                 write_qe_file(structure_output_dir, atoms)
             if args.dft_software.lower() == 'orca':
-                write_orca_input_from_atoms(atoms, template='orca_template.inp', output_dir=structure_output_dir)
+                write_orca_file(atoms, template='orca_template.inp', output_dir=structure_output_dir)
             else:
                 logging.error(f"Unsupported DFT software: {args.dft_software}")
 
