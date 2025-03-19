@@ -350,7 +350,64 @@ def plot_std_dev_distribution(std_devs):
     plt.grid(True)
     plt.show()
 
-def write_qe_file(output_directory, crystal_structure):
+def create_orca_input_from_atoms(atoms_list, template, output_dir='./'):
+    """
+    Generates ORCA input files from a list of ASE Atoms objects.
+
+    Parameters:
+        atoms_list (list): List of ASE Atoms objects.
+        template (str): Path to the ORCA template file (already containing charge & multiplicity).
+        output_dir (str): Directory where input files and XYZ files will be saved.
+
+    Returns:
+        input_files (list): List of generated ORCA input file paths.
+        xyz_files (list): List of generated XYZ file paths.
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    input_files = []
+    xyz_files = []
+
+    logging.info("Writing XYZ files and ORCA input files.")
+
+    for i, atoms in enumerate(atoms_list):
+        base_name = f"structure_{i}"
+        xyz_file = os.path.join(output_dir, f"{base_name}.xyz")
+        input_file = os.path.join(output_dir, f"{base_name}.inp")
+
+        # Write XYZ file
+        write(xyz_file, atoms, format="xyz")
+        xyz_files.append(xyz_file)
+
+        # Read the ORCA template
+        with open(template, "r") as tmpl:
+            content = tmpl.read()
+
+        # Append the XYZ file reference
+        formatted_content = content + f"\n\n* xyzfile 0 1 {base_name}.xyz\n\n"  # Adjust charge/multiplicity if needed
+
+        # Write ORCA input file
+        with open(input_file, "w") as inp:
+            inp.write(formatted_content)
+
+        input_files.append(input_file)
+
+        logging.info(f"Created {input_file} referencing {xyz_file}")
+
+    return input_files, xyz_files
+        
+def write_qe_inputs_from_atoms(atoms_list, output_dir="./"):
+    """
+    Generates Quantum ESPRESSO input files from a list of ASE Atoms objects.
+
+    Parameters:
+        atoms_list (list): List of ASE Atoms objects.
+        output_dir (str): Directory where QE input files will be saved.
+
+    Returns:
+        input_files (list): List of generated QE input file paths.
+    """
     # Define QE input parameters
     input_data = {
         "calculation": "scf",
@@ -366,7 +423,7 @@ def write_qe_file(output_directory, crystal_structure):
         "ecutwfc": 90,
         "vdw_corr": "mbd",
         "occupations": "smearing",
-        "smearing": 'cold',
+        "smearing": "cold",
         "electron_maxstep": 80,
         "mixing_beta": 4.0e-01,
     }
@@ -381,24 +438,33 @@ def write_qe_file(output_directory, crystal_structure):
         "La": "La.upf",
         "Li": "Li.upf",
         "Zr": "Zr.upf",
-        "C" : "C.upf",
-        "H" : "H.upf",
+        "C": "C.upf",
+        "H": "H.upf",
         "Nb": "Nb.upf",
     }
 
-    # Create the output directory if it does not exist
-    os.makedirs(output_directory, exist_ok=True)
-    
-    # Write the QE input file using ASE's write function
-    filename = os.path.join(output_directory, "qe_input.in")
-    write(
-        format='espresso-in',
-        filename=filename,
-        images=crystal_structure, 
-        input_data=input_data,
-        pseudopotentials=pseudos,
-        kspacing=0.05
-    )
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    input_files = []
+
+    # Loop through the Atoms list and generate input files
+    for i, atoms in enumerate(atoms_list):
+        filename = os.path.join(output_dir, f"qe_input_{i}.in")
+        
+        write(
+            filename=filename,
+            images=atoms, 
+            format='espresso-in',
+            input_data=input_data,
+            pseudopotentials=pseudos,
+            kspacing=0.05
+        )
+
+        input_files.append(filename)
+        print(f"Written {filename}")
+
+    return input_files
 
 def main():
     # Parse command-line arguments
@@ -469,6 +535,8 @@ def main():
         if args.dft_software:
             if args.dft_software.lower() == 'qe':
                 write_qe_file(structure_output_dir, atoms)
+            if args.dft_software.lower() == 'orca':
+                write_orca_input_from_atoms(atoms, template='orca_template.inp', output_dir=structure_output_dir)
             else:
                 logging.error(f"Unsupported DFT software: {args.dft_software}")
 
