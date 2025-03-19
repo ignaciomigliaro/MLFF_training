@@ -104,8 +104,6 @@ def get_configuration_space(path, stepsize=1, Z_of_type=None, **kwargs):
 
     return configurations
 
-
-
 def load_models(model_dir, calculator='chgnet', device='cuda', extension='.pth.tar',):
     """
     Load CHGNet models from a specified directory, suppress output, and handle loading errors.
